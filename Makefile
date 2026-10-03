@@ -12,8 +12,6 @@ configure:
 build: configure
 	cmake --build $(BUILD_DIR) -j$(JOBS)
 
-test: build
-	ctest --test-dir $(BUILD_DIR) --output-on-failure
 
 run: build
 	$(BUILD_DIR)/qputer

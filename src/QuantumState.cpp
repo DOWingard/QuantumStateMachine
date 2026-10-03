@@ -1,5 +1,7 @@
 #include <QuantumState.hpp>
 
+#include <format>
+#include <stdexcept>
 #include <Eigen/Dense>
 
 
@@ -8,19 +10,24 @@ namespace Qputer
 {
 
 
-    size_t QuantumStateVector::size()
+    QuantumStateVector::QuantumStateVector(size_t n) : n_qubits(n)
     {
-        return ket.size();
+        if (n == 0 || n > kMaxQubits)
+        {
+            throw std::length_error(std::format("num_qubits={} outside [1, {}]", n, kMaxQubits));
+        }
+        ket = Eigen::VectorXcd::Zero(Eigen::Index{1} << n);
+        ket[0] = 1.0;
     }
 
-    float QuantumStateVector::norm()
+    size_t QuantumStateVector::size() const
     {
-        float sum = 0;
-        for (int i = 0; i < n_qubits; i++)
-        {
-            sum += std::norm(ket[i]);
-        };
-        return std::sqrt(sum);
+        return static_cast<size_t>(ket.size());
+    }
+
+    double QuantumStateVector::norm() const
+    {
+        return ket.norm();
     }
 
     void QuantumStateVector::normalize()
