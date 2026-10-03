@@ -1,0 +1,21 @@
+src/QuantumState.cpp
+  s_917bf3b83754a6::t_26e1b1c8318e61 20
+  s_917bf3b83754a6::t_a18babff886c18 17-19
+  s_917bf3b83754a6::t_48df594d1417ff 21-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b1dd5ec52eeec7667334b2d29c2e74d9f5b0af71",
+  "prompts": {},
+  "sessions": {
+    "s_917bf3b83754a6": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "70349f16-0c77-4c1e-986e-a8940d821807",
+        "model": "mai-code-1.1-flash"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
