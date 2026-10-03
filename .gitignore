@@ -1,0 +1,18 @@
+.env
+CONTEXT/
+
+# Build output
+build/
+cmake-build-*/
+
+# Compiled objects
+*.o
+*.obj
+*.so
+*.a
+*.exe
+
+# IDE
+.vscode/
+.idea/
+compile_commands.json
