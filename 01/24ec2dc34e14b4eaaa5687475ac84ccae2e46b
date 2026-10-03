@@ -1,0 +1,14 @@
+src/QuantumState.cpp
+  h_ad89bc2dabc3b0 12,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0124ec2dc34e14b4eaaa5687475ac84ccae2e46b",
+  "prompts": {},
+  "humans": {
+    "h_ad89bc2dabc3b0": {
+      "author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
