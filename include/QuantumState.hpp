@@ -8,6 +8,6 @@
 namespace Qstate
 {
 
-
+void print();
 
 } // namespace qstate

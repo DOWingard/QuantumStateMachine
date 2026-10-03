@@ -16,7 +16,7 @@ test: build
 	ctest --test-dir $(BUILD_DIR) --output-on-failure
 
 run: build
-	$(BUILD_DIR)/quantum_sim
+	$(BUILD_DIR)/qstate
 
 clean:
 	cmake --build $(BUILD_DIR) --target clean

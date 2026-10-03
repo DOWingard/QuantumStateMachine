@@ -29,25 +29,44 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(Eigen)
 
 # ------------------------------------------------------------------------------
-# Target 1: The Core Library
+# Library target
 # ------------------------------------------------------------------------------
-add_library(qstate
+add_library(qstate_lib
     src/QuantumState.cpp
 )
 
 # Specify Include Directories (Public headers)
-target_include_directories(qstate PUBLIC
+target_include_directories(qstate_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
 # Link Eigen to our library
-target_link_libraries(qstate PUBLIC Eigen3::Eigen)
+target_link_libraries(qstate_lib PUBLIC Eigen3::Eigen)
+
+# ------------------------------------------------------------------------------
+# Executable target
+# ------------------------------------------------------------------------------
+add_executable(qstate
+    tests/main.cpp
+)
+
+target_link_libraries(qstate PRIVATE qstate_lib)
 
 # ------------------------------------------------------------------------------
 # Clang-Specific Compiler Flags & Sanitizers
 # ------------------------------------------------------------------------------
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(qstate_lib PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wshadow
+        -Wnon-virtual-dtor
+        -Wold-style-cast
+        -Werror
+    )
     target_compile_options(qstate PRIVATE
         -Wall
         -Wextra
@@ -62,11 +81,18 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Enable AddressSanitizer and UndefinedBehaviorSanitizer for Debug builds
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         message(STATUS "Enforcing Clang Sanitizers (ASan + UBSan) for C++23 Debug build")
-        target_compile_options(qstate PRIVATE 
-            -fsanitize=address,undefined 
+        target_compile_options(qstate_lib PRIVATE
+            -fsanitize=address,undefined
             -fno-omit-frame-pointer
         )
-        target_link_options(qstate PRIVATE 
+        target_compile_options(qstate PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
+        target_link_options(qstate_lib PRIVATE
+            -fsanitize=address,undefined
+        )
+        target_link_options(qstate PRIVATE
             -fsanitize=address,undefined
         )
     endif()
