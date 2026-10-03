@@ -1,0 +1,48 @@
+tests/test_parallel.cpp
+  s_53142808eae715::t_e17ead6a678e3d 1-47
+Makefile
+  s_53142808eae715::t_7f7d482f8c43e9 1,3-4,12-13,16,18-19,28
+CMakePresets.json
+  s_53142808eae715::t_7f7d482f8c43e9 1-40
+tests/CMakeLists.txt
+  s_53142808eae715::t_7f7d482f8c43e9 1-30
+tests/test_dense_gates.cpp
+  s_53142808eae715::t_ad7617fc349316 3,79
+  s_53142808eae715::t_7094e884d1da56 1-2,4-78,80-121
+tests/test_multi_qubit_gates.cpp
+  s_53142808eae715::t_ad7617fc349316 4-5
+  s_53142808eae715::t_27d59448a8ed2f 1-3,6-262
+tests/TestSupport.hpp
+  s_53142808eae715::t_ad7617fc349316 209-215
+  s_53142808eae715::t_e0d98269c447a5 6,11,16
+  s_53142808eae715::t_458646e53dd317 195-196,199,201-205
+  s_53142808eae715::t_5b4c84d1f6f9ae 1-5,7-10,12-15,17-194,197-198,200,206-208,216-296
+CMakeLists.txt
+  s_53142808eae715::t_adfebb77109715 64-65,67,69-70,81-88,91-111
+tests/test_single_qubit_gates.cpp
+  s_53142808eae715::t_651e4cb9d2ee35 1-179
+tests/test_algorithms.cpp
+  s_53142808eae715::t_70907bf7faa405 45-46,51,81
+  s_53142808eae715::t_acca5634d552ef 1-44,47-50,52-80,82-126,131-134,141-249
+  s_53142808eae715::t_9390bef4be8050 127-130,135-140
+tests/test_reference.cpp
+  s_53142808eae715::t_04fe569178033e 1-157
+tests/test_state.cpp
+  s_53142808eae715::t_6dfea04b4c6862 1-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e624b9c2c65fe7d5b769719e7921ed8c65b8c223",
+  "prompts": {},
+  "sessions": {
+    "s_53142808eae715": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42f6c0dd-5b70-4691-a212-d7de53681779",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
