@@ -61,56 +61,51 @@ if(QPUTER_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # ------------------------------------------------------------------------------
+# Shared warning + sanitizer flags, linked PRIVATE into every first-party target
+# so the library, app, and tests are all held to the same bar.
+# ------------------------------------------------------------------------------
+add_library(qputer_build_flags INTERFACE)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(qputer_build_flags INTERFACE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wshadow
+        -Wnon-virtual-dtor
+        -Wold-style-cast
+        -Werror
+    )
+
+    # ASan + UBSan for Debug builds; compile and link flags must both be present.
+    set(QPUTER_SANITIZERS -fsanitize=address,undefined)
+    target_compile_options(qputer_build_flags INTERFACE
+        $<$<CONFIG:Debug>:${QPUTER_SANITIZERS} -fno-omit-frame-pointer>
+    )
+    target_link_options(qputer_build_flags INTERFACE
+        $<$<CONFIG:Debug>:${QPUTER_SANITIZERS}>
+    )
+endif()
+
+target_link_libraries(qputer_lib PRIVATE qputer_build_flags)
+
+# ------------------------------------------------------------------------------
 # Executable target
 # ------------------------------------------------------------------------------
 add_executable(qputer
-    tests/main.cpp
+    apps/main.cpp
 )
 
-target_link_libraries(qputer PRIVATE qputer_lib)
+target_link_libraries(qputer PRIVATE qputer_lib qputer_build_flags)
 
 # ------------------------------------------------------------------------------
-# Clang-Specific Compiler Flags & Sanitizers
+# Tests
 # ------------------------------------------------------------------------------
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(qputer_lib PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Wconversion
-        -Wshadow
-        -Wnon-virtual-dtor
-        -Wold-style-cast
-        -Werror
-    )
-    target_compile_options(qputer PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Wconversion
-        -Wshadow
-        -Wnon-virtual-dtor
-        -Wold-style-cast
-        -Werror
-    )
-
-    # Enable AddressSanitizer and UndefinedBehaviorSanitizer for Debug builds
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        message(STATUS "Enforcing Clang Sanitizers (ASan + UBSan) for C++23 Debug build")
-        target_compile_options(qputer_lib PRIVATE
-            -fsanitize=address,undefined
-            -fno-omit-frame-pointer
-        )
-        target_compile_options(qputer PRIVATE
-            -fsanitize=address,undefined
-            -fno-omit-frame-pointer
-        )
-        target_link_options(qputer_lib PRIVATE
-            -fsanitize=address,undefined
-        )
-        target_link_options(qputer PRIVATE
-            -fsanitize=address,undefined
-        )
-    endif()
+# Project-scoped switch: BUILD_TESTING is a global shared with fetched
+# dependencies, so it can't independently gate this project's tests.
+option(QPUTER_BUILD_TESTS "Build the qputer unit test suite" ${PROJECT_IS_TOP_LEVEL})
+if(QPUTER_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
-

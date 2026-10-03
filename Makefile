@@ -1,5 +1,7 @@
-BUILD_DIR := build
+# Thin wrapper over CMakePresets.json; each build type gets its own tree under build/.
 BUILD_TYPE ?= Release
+PRESET := $(shell echo $(BUILD_TYPE) | tr '[:upper:]' '[:lower:]')
+BUILD_DIR := build/$(PRESET)
 JOBS ?= $(shell nproc)
 
 .PHONY: all configure build test run clean distclean
@@ -7,11 +9,14 @@ JOBS ?= $(shell nproc)
 all: build
 
 configure:
-	cmake -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	cmake --preset $(PRESET)
+	ln -sfn $(BUILD_DIR)/compile_commands.json compile_commands.json
 
 build: configure
-	cmake --build $(BUILD_DIR) -j$(JOBS)
+	cmake --build --preset $(PRESET) -j$(JOBS)
 
+test: build
+	ctest --preset $(PRESET) -j$(JOBS)
 
 run: build
 	$(BUILD_DIR)/qputer
@@ -20,4 +25,4 @@ clean:
 	cmake --build $(BUILD_DIR) --target clean
 
 distclean:
-	rm -rf $(BUILD_DIR)
+	rm -rf build
