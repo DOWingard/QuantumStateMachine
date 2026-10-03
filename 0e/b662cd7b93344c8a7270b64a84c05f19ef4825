@@ -1,0 +1,14 @@
+include/QuantumState.hpp
+  h_ad89bc2dabc3b0 21,28-29,31,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0eb662cd7b93344c8a7270b64a84c05f19ef4825",
+  "prompts": {},
+  "humans": {
+    "h_ad89bc2dabc3b0": {
+      "author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
