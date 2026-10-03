@@ -18,6 +18,7 @@ class QuantumStateVector
     
 
     public:
+    const Eigen::VectorXcd& vector() const { return ket; }
     std::complex<double>& operator[](size_t i) { return ket[i]; }
     const std::complex<double>& operator[](size_t i) const { return ket[i]; }
 
@@ -25,26 +26,11 @@ class QuantumStateVector
     explicit QuantumStateVector(size_t n) : n_qubits(pow(2,n)), ket(Eigen::VectorXcd::Zero(pow(2,n))) {};
 
 
-    size_t size()
-    {
-        return ket.size();
-    }
+    size_t size();
 
-    float norm()
-    {
-        float sum = 0;
-        for (int i = 0; i < n_qubits; i++)
-        {
-            sum += std::norm(ket[i]);
-        };
-        return std::sqrt(sum);
-    }
+    float norm();
 
-    void normalize()
-    {
-        ket.normalize();
-    }
-    
+    void normalize();
 
 };
 
