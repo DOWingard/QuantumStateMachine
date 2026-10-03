@@ -1,0 +1,25 @@
+include/QuantumState.hpp
+  s_dd4c7c989b616c::t_13dd73df9f99f5 3-4
+  s_dd4c7c989b616c::t_cf46529bcb59db 16
+  s_dd4c7c989b616c::t_7741de8d14a296 25
+  s_dd4c7c989b616c::t_a78e8a32c9b449 5
+  s_dd4c7c989b616c::t_c338115e6e1dab 13-15
+  s_dd4c7c989b616c::t_c9489a1bb4b14e 17-19,22-24
+  s_dd4c7c989b616c::t_35e8dc09a21bdd 26-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5a11f488bfab24d1bf845d5384b43f88b72c3082",
+  "prompts": {},
+  "sessions": {
+    "s_dd4c7c989b616c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38bd7c80-20d6-4513-9317-698dd08fc47e",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
