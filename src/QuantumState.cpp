@@ -1,18 +1,14 @@
 #include <QuantumState.hpp>
 
+#include <Eigen/Dense>
 
 
 
-
-
-
-namespace Qstate
+namespace Qputer
 {
-std::complex<double> iic(0,1);
 
 
-void print()
-{
-    std::cout << Qstate::iic << '\n';
-};
+
+
+
 } // namespace qstate

@@ -31,33 +31,33 @@ FetchContent_MakeAvailable(Eigen)
 # ------------------------------------------------------------------------------
 # Library target
 # ------------------------------------------------------------------------------
-add_library(qstate_lib
+add_library(qputer_lib
     src/QuantumState.cpp
 )
 
 # Specify Include Directories (Public headers)
-target_include_directories(qstate_lib PUBLIC
+target_include_directories(qputer_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
 # Link Eigen to our library
-target_link_libraries(qstate_lib PUBLIC Eigen3::Eigen)
+target_link_libraries(qputer_lib PUBLIC Eigen3::Eigen)
 
 # ------------------------------------------------------------------------------
 # Executable target
 # ------------------------------------------------------------------------------
-add_executable(qstate
+add_executable(qputer
     tests/main.cpp
 )
 
-target_link_libraries(qstate PRIVATE qstate_lib)
+target_link_libraries(qputer PRIVATE qputer_lib)
 
 # ------------------------------------------------------------------------------
 # Clang-Specific Compiler Flags & Sanitizers
 # ------------------------------------------------------------------------------
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(qstate_lib PRIVATE
+    target_compile_options(qputer_lib PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -67,7 +67,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         -Wold-style-cast
         -Werror
     )
-    target_compile_options(qstate PRIVATE
+    target_compile_options(qputer PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -81,18 +81,18 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Enable AddressSanitizer and UndefinedBehaviorSanitizer for Debug builds
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         message(STATUS "Enforcing Clang Sanitizers (ASan + UBSan) for C++23 Debug build")
-        target_compile_options(qstate_lib PRIVATE
+        target_compile_options(qputer_lib PRIVATE
             -fsanitize=address,undefined
             -fno-omit-frame-pointer
         )
-        target_compile_options(qstate PRIVATE
+        target_compile_options(qputer PRIVATE
             -fsanitize=address,undefined
             -fno-omit-frame-pointer
         )
-        target_link_options(qstate_lib PRIVATE
+        target_link_options(qputer_lib PRIVATE
             -fsanitize=address,undefined
         )
-        target_link_options(qstate PRIVATE
+        target_link_options(qputer PRIVATE
             -fsanitize=address,undefined
         )
     endif()
