@@ -1,0 +1,24 @@
+CMakeLists.txt
+  s_917bf3b83754a6::t_8c6a41108adcd2 32,34,39,45-54,60-69,84-85,88-95
+src/QuantumState.cpp
+  s_917bf3b83754a6::t_26e1b1c8318e61 11,14-15
+  s_917bf3b83754a6::t_708ad9024ac4a9 16-17
+Makefile
+  s_917bf3b83754a6::t_8c6a41108adcd2 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "61e26d2382a52709fa77abc9b577edf5f1c24196",
+  "prompts": {},
+  "sessions": {
+    "s_917bf3b83754a6": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "70349f16-0c77-4c1e-986e-a8940d821807",
+        "model": "mai-code-1.1-flash"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
