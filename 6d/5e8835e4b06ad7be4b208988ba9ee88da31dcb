@@ -1,0 +1,22 @@
+.gitignore
+  h_ad89bc2dabc3b0 1-18
+CMakeLists.txt
+  h_ad89bc2dabc3b0 1-74
+Makefile
+  h_ad89bc2dabc3b0 1-25
+include/QuantumState.hpp
+  h_ad89bc2dabc3b0 1-13
+src/QuantumState.cpp
+  h_ad89bc2dabc3b0 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6d5e8835e4b06ad7be4b208988ba9ee88da31dcb",
+  "prompts": {},
+  "humans": {
+    "h_ad89bc2dabc3b0": {
+      "author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
