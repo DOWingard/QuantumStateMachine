@@ -1,0 +1,47 @@
+src/StabilizerState.cpp
+  s_d8dae86286768c::t_417af05ba30e1a 1-163,165-520
+  s_d8dae86286768c::t_4d9106a14622e9 164
+tests/CMakeLists.txt
+  s_d8dae86286768c::t_4d4fd68de238db 23-24
+CMakeLists.txt
+  s_d8dae86286768c::t_e518effd0bc1fd 39
+include/QuantumStateMachine.hpp
+  s_d8dae86286768c::t_f20277398af027 5,16,79-90,119-126,131,150-151,155,159-167,177-179,229,231,235,238,257-258,261,263,268,270,280
+README.md
+  s_d8dae86286768c::t_348951aa14dab9 3-13,23-27,39,88-90,108-111,140-143,161-162,165-181,190-192,194,232-247,251,257-266,269-271,281-283,343-436,441-443,502,514-519,527-530,541,543-544,554,568-569,575-577,589,593-594,600-601,606
+tests/test_backend_comparison.cpp
+  s_d8dae86286768c::t_0dc3333a748d01 1-107,109-358
+  s_d8dae86286768c::t_4d4fd68de238db 108
+tests/test_stabilizer.cpp
+  s_d8dae86286768c::t_5b6f61eab1e664 1-307
+tests/TestSupport.hpp
+  s_d8dae86286768c::t_aed79bc7e0cca4 5-6,25-28,253-271,323-460
+  s_d8dae86286768c::t_4d4fd68de238db 17,19
+  s_d8dae86286768c::t_32048148332f49 461-462
+apps/main.cpp
+  s_d8dae86286768c::t_62960e8452dce9 72-85
+include/QuantumState.hpp
+  s_d8dae86286768c::t_d70470c57a9792 13-14
+include/StabilizerState.hpp
+  s_d8dae86286768c::t_9eb0e9854273c3 1-132
+src/QuantumStateMachine.cpp
+  s_d8dae86286768c::t_1b6e1a224f056e 18,20,53,57-67,78-79,81-103,107-108,110-139,164-166,168-172,174-177,208-243,246,251-255,346-441,475-476,482-485,511-540,557,559-561,570-573,575,584,594-595,604-606,664,823-836,838,856-865,871,873-881,887-891,893-912,922-928,941,945,957-958,960-977,993,997-1005,1032-1035,1037-1043,1049-1053,1058,1066-1073
+tests/test_state_machine.cpp
+  s_d8dae86286768c::t_aed79bc7e0cca4 43-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f837f7e7617e4dc9ffc412fb1096b3b08a0b3705",
+  "prompts": {},
+  "sessions": {
+    "s_d8dae86286768c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "917b449a-50e3-4193-aee7-d57f56953c1e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
