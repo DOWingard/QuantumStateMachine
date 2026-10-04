@@ -1,0 +1,81 @@
+apps/main.cpp
+  s_72742d7299940d::t_da5239aa075edb 1,3-5,7-10,13-22,24-29,31,34-47,49-55,57-70,72-74
+tests/test_readout.cpp
+  s_72742d7299940d::t_6e92d67d3b2e70 1-4,6-197,243
+  s_72742d7299940d::t_2ecbd85710d456 5,198-242
+src/QuantumStateMachine.cpp
+  s_72742d7299940d::t_3228bba8fb48af 160-163,165-181,183-229,232-233,235-244,670,676-677,716,746,752
+  s_72742d7299940d::t_3828e4224d78ce 3,112-113,146,320,422-437,598,725-726,780
+  s_72742d7299940d::t_7d88384a9ef19d 501,551-553,559-561,572-574,593-597
+  s_72742d7299940d::t_19c7815ada9ec7 12,150,618-619
+  s_72742d7299940d::t_435e322d9569ae 764
+  s_72742d7299940d::t_e364cc4ad80bfa 247-256,464,481,486,491,496,506,511,516,521,526,531,536,541,546
+  s_72742d7299940d::t_9826b0511d4fbe 1-2,4-11,13-111,114-145,147-149,151-159,164,182,230-231,234,245-246,257-319,321-421,438-463,465-480,482-485,487-490,492-495,497-500,502-505,507-510,512-515,517-520,522-525,527-530,532-535,537-540,542-545,547-550,554-558,562-571,575-592,599-617,620-669,671-675,678-715,717-724,727-745,747-751,753-763,765-779,781-802
+CMakeLists.txt
+  s_72742d7299940d::t_19c7815ada9ec7 38-39,42-43
+  s_72742d7299940d::t_77bab8311356ed 44
+tests/test_measurement.cpp
+  s_72742d7299940d::t_4edb2073009b73 366-392,396-398,403-418
+  s_72742d7299940d::t_74525bdbf567a4 393-395,399-402
+  s_72742d7299940d::t_0c6ba5c097dd61 201-205,209,221-223
+  s_72742d7299940d::t_a49d5ac884d8f3 1-200,206-208,210-220,224-365
+include/QuantumState.hpp
+  s_72742d7299940d::t_82769330d865fd 36-38
+  s_72742d7299940d::t_49ca06cac11486 13
+src/ReadoutKernels.cpp
+  s_72742d7299940d::t_bada6ef7a27062 1-87,97-253
+  s_72742d7299940d::t_3228bba8fb48af 88-96
+src/Parallel.hpp
+  s_72742d7299940d::t_fda37ca7497747 1-50
+include/QuantumGates.hpp
+  s_72742d7299940d::t_d7b02c683e6cf3 72
+  s_72742d7299940d::t_82769330d865fd 6,71
+  s_72742d7299940d::t_93e1a1bbe69c15 73
+tests/test_state_machine.cpp
+  s_72742d7299940d::t_a72c7a1e1ad6ac 150
+  s_72742d7299940d::t_461990096abe11 1-149,151-237
+tests/CMakeLists.txt
+  s_72742d7299940d::t_b58bde2bbf268c 20-22
+README.md
+  s_7edd5b07045a94::t_982b20262d6fa5 1-441
+include/QuantumStateMachine.hpp
+  s_72742d7299940d::t_cde4e4102a3896 1-10,12-22,25-233,238-247
+  s_72742d7299940d::t_3828e4224d78ce 11,23-24,234-237
+src/QuantumGates.cpp
+  s_72742d7299940d::t_3a7af3fc379736 20,323-325,331,333,502,508-543
+  s_72742d7299940d::t_fda37ca7497747 21-23,36,114-115
+  s_72742d7299940d::t_82769330d865fd 345-354
+  s_72742d7299940d::t_d7b02c683e6cf3 332,344
+  s_72742d7299940d::t_b71e27516ade7f 355-356
+src/QuantumState.cpp
+  s_72742d7299940d::t_82769330d865fd 3,24-31
+  s_72742d7299940d::t_3d926aa077b29f 32-33
+src/ReadoutKernels.hpp
+  s_72742d7299940d::t_ba2bd7a918d633 1-51
+src/DenseGate.hpp
+  s_72742d7299940d::t_2ce3176f4a042e 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9bb4a58dd20f6170cb1ed3403adeccb70cd27e77",
+  "prompts": {},
+  "sessions": {
+    "s_72742d7299940d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6373b6f3-cc52-4ed9-bb0e-b33d43dbd631",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    },
+    "s_7edd5b07045a94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "81481ded-3ec3-4c80-9ca3-3fe2d630631c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
