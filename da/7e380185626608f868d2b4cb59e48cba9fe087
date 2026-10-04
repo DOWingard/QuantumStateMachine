@@ -1,0 +1,21 @@
+src/QuantumGates.cpp
+  s_587376573ae318::t_9cbecbcf537814 471,474
+src/StabilizerState.cpp
+  s_587376573ae318::t_9cbecbcf537814 411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "da7e380185626608f868d2b4cb59e48cba9fe087",
+  "prompts": {},
+  "sessions": {
+    "s_587376573ae318": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e848049c-38e2-475f-ace8-347e2470e662",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
