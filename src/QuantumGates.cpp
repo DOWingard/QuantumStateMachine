@@ -468,11 +468,10 @@ namespace
         const std::size_t dim = kDim != 0 ? kDim : offsets.size();
         const Index* off = offsets.data();
         const cd* u = U.data();
+
         // A subspace costs dim^2 complex multiply-adds against a pair's 4, so this compute-bound
         // kernel parallelizes at fewer subspaces and with more threads than the streaming ones.
-        const Index work = count * dim * dim / 4;
-
-        QPUTER_OMP_PARALLEL(work)
+        QPUTER_OMP_PARALLEL(count * dim * dim / 4)
         {
             std::conditional_t<kDim != 0, std::array<cd, kDim>, std::vector<cd>> in{};
             if constexpr (kDim == 0) in.resize(dim);

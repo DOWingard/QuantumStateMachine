@@ -394,7 +394,6 @@ void StabilizerState::collapse(Qubit q, std::size_t p, bool outcome)
     sc.sumHi.assign(span, 0);
     Word* sumLo = sc.sumLo.data();
     Word* sumHi = sc.sumHi.data();
-    [[maybe_unused]] const std::size_t work = (xs.size() + ys.size() + zs.size()) * span;
 
     // body(x, z, mask, lo, hi) updates one kBlock-word block of one column.
     auto sweep = [&](std::span<const Qubit> cols, Word* lo, Word* hi, auto body)
@@ -409,7 +408,7 @@ void StabilizerState::collapse(Qubit q, std::size_t p, bool outcome)
         }
     };
 
-    QPUTER_OMP(parallel if(work >= kParallelWords))
+    QPUTER_OMP(parallel if((xs.size() + ys.size() + zs.size()) * span >= kParallelWords))
     {
         Scratch& own = scratch();
         own.lo.assign(span, 0);
