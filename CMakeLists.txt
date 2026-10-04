@@ -36,6 +36,7 @@ add_library(qputer_lib
     src/QuantumState.cpp
     src/QuantumGates.cpp
     src/ReadoutKernels.cpp
+    src/StabilizerState.cpp
     src/QuantumStateMachine.cpp
 )
 

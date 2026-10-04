@@ -4,48 +4,10 @@
 
 #include <stdexcept>
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
 using namespace QputerTest;
 using Qputer::Counts;
 using Qputer::Outcome;
 using Qputer::QuantumStateMachine;
-
-namespace
-{
-
-::testing::AssertionResult withinSigmas(double observed, double p, std::size_t shots, double sigmas = 5.0)
-{
-    const double sigma = std::sqrt(p * (1.0 - p) / static_cast<double>(shots));
-    if (std::abs(observed - p) <= sigmas * sigma + 1e-12) return ::testing::AssertionSuccess();
-    return ::testing::AssertionFailure() << std::format("frequency {:.5f} vs p = {:.5f} ({:.1f} sigma)",
-                                                        observed, p, std::abs(observed - p) / sigma);
-}
-
-double frequency(const Counts& counts, Outcome o, std::size_t shots)
-{
-    return counts.contains(o) ? static_cast<double>(counts.at(o)) / static_cast<double>(shots) : 0.0;
-}
-
-// Runs `body` with the OpenMP team size pinned, restoring the previous setting.
-template <class F>
-auto withThreads(int threads, F&& body)
-{
-#ifdef _OPENMP
-    const int saved = omp_get_max_threads();
-    omp_set_num_threads(threads);
-    auto result = body();
-    omp_set_num_threads(saved);
-    return result;
-#else
-    (void)threads;
-    return body();
-#endif
-}
-
-} // namespace
 
 
 // ---- Projective measurement on the live state ----

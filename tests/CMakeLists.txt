@@ -20,6 +20,8 @@ add_executable(qputer_tests
     test_state_machine.cpp
     test_readout.cpp
     test_measurement.cpp
+    test_stabilizer.cpp
+    test_backend_comparison.cpp
 )
 
 target_link_libraries(qputer_tests PRIVATE qputer_lib qputer_build_flags GTest::gtest_main)

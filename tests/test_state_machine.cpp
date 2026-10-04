@@ -40,7 +40,9 @@ TEST(StateMachine, StartsInGroundStateWithEmptyCircuit)
 TEST(StateMachine, RejectsInvalidRegisterSizes)
 {
     EXPECT_THROW((QuantumStateMachine{0}), std::length_error);
-    EXPECT_THROW((QuantumStateMachine{Qputer::kMaxQubits + 1}), std::length_error);
+    EXPECT_THROW((QuantumStateMachine{Qputer::kMaxQubits + 1, 0, 1, Qputer::Backend::StateVector}),
+                 std::length_error);
+    EXPECT_THROW((QuantumStateMachine{Qputer::kMaxStabilizerQubits + 1}), std::length_error);
     EXPECT_THROW((QuantumStateMachine{2, QuantumStateMachine::kMaxClbits + 1}), std::length_error);
 }
 

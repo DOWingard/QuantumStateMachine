@@ -69,6 +69,20 @@ int main()
     tele.measure(2, 2);
     printCounts(std::format("Teleportation, {} shots (bit 2 must be 0):", shots), tele.run(shots), 3);
 
+    // 1000 qubits exceed the state-vector limit, so Auto runs this Clifford circuit on the
+    // stabilizer tableau. Qubits 0, 500 and 999 always agree.
+    constexpr std::size_t wide = 1000;
+    QuantumStateMachine big{wide, 3, seed};
+    big.h(0);
+    for (Qputer::Qubit q = 1; q < wide; ++q) big.cnot(q - 1, q);
+    std::cout << std::format("GHZ on {} qubits ({} backend): <Z0 Z999> = {:+.1f}  <Z500> = {:+.1f}\n", wide,
+                             big.backend() == Qputer::Backend::Stabilizer ? "stabilizer" : "state-vector",
+                             big.expectation("ZZ", {0, 999}), big.expectation("Z", {500}));
+    big.measure(0, 0);
+    big.measure(500, 1);
+    big.measure(999, 2);
+    printCounts(std::format("GHZ-{} qubits (0, 500, 999), {} shots:", wide, shots), big.run(shots), 3);
+
     std::cout << std::format("Seed {} reproduces every result above.\n", seed);
     return 0;
 }

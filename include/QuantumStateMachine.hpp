@@ -2,6 +2,7 @@
 
 #include <QuantumGates.hpp>
 #include <QuantumState.hpp>
+#include <StabilizerState.hpp>
 
 #include <array>
 #include <bit>
@@ -12,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 #include <Eigen/Core>
 
@@ -74,6 +76,18 @@ enum class OpKind : std::uint8_t
 std::string_view opName(OpKind kind);
 std::optional<OpKind> opKindFromName(std::string_view name);
 
+// True for the operations the stabilizer backend runs: the Clifford gates x y z h s sdg sx
+// cnot cz swap, plus measure and reset.
+bool stabilizerSupports(OpKind kind);
+
+
+enum class Backend : std::uint8_t
+{
+    Auto,        // StateVector for N <= kMaxQubits, Stabilizer above
+    StateVector, // 2^N amplitudes, every operation, N <= kMaxQubits
+    Stabilizer,  // tableau, stabilizerSupports() operations only, N <= kMaxStabilizerQubits
+};
+
 // Classical feed-forward: the operation runs only while clbit holds `value`.
 struct Condition
 {
@@ -102,11 +116,19 @@ struct Operation
 // register of up to 64 bits, a seeded RNG, and the circuit applied since the last
 // preparation.
 //
+// The register is a state vector (any operation, 16 * 2^N bytes) or a stabilizer tableau
+// (Clifford gates, measure and reset; O(N) per gate, O(N^2 / 64) per measurement, N^2 / 2
+// bytes). Backend::Auto takes the state vector up to kMaxQubits and the tableau above it;
+// either can be requested explicitly. Every readout and run() reports the same results on
+// both, and for a Clifford circuit the same seed gives the same outcomes on both: random
+// choices select an outcome by rank in index order from the same draws (barring
+// floating-point ties at a state-vector CDF boundary).
+//
 // Execution is eager: every operation is validated, applied in place to the live state,
 // then recorded. Readout never modifies the live state. run(shots) replays the recorded
 // circuit from the recorded preparation on scratch registers, leaving the live system as is.
 //
-// Invariant: the live state is normalized to rounding error (preparation validates it,
+// Invariant: a live state vector is normalized to rounding error (preparation validates it,
 // gates are unitary, measurement renormalizes), so readout needs no normalization pass.
 //
 // Conventions: qubit q is bit q of an amplitude index. A readout over (q_0, ..., q_{k-1})
@@ -125,16 +147,25 @@ class QuantumStateMachine
     // Starts in |0...0> with all clbits 0. Without a seed, one is drawn from std::random_device
     // (seed() reports it, so any run can be reproduced).
     explicit QuantumStateMachine(std::size_t numQubits, std::size_t numClbits = 0,
-                                 std::optional<std::uint64_t> seed = std::nullopt);
+                                 std::optional<std::uint64_t> seed = std::nullopt,
+                                 Backend backend = Backend::Auto);
 
 
     // ---- System ----
-    std::size_t num_qubits() const { return live.num_qubits(); }
+    std::size_t num_qubits() const { return nQubits; }
     std::size_t num_clbits() const { return nClbits; }
     std::uint64_t seed() const { return seedValue; }
     void reseed(std::uint64_t seed);
+    Backend backend() const; // StateVector or Stabilizer, never Auto
 
-    const QuantumStateVector& state() const { return live; }
+    // The live register, for the backend that holds it; std::logic_error on the other one.
+    const QuantumStateVector& state() const;
+    const StabilizerState& stabilizer_state() const;
+
+    // Amplitudes on either backend: a copy, or the tableau converted (N <= kMaxQubits, global
+    // phase as in StabilizerState::to_state_vector).
+    QuantumStateVector state_vector() const;
+
     Outcome classical_register() const { return creg; }
     bool clbit(std::size_t index) const;
     const std::vector<Operation>& circuit() const { return ops; }
@@ -143,8 +174,9 @@ class QuantumStateMachine
     // ---- Preparation: each clears the circuit and classical register and becomes the
     //      starting point for run() ----
     void prepare();                                         // |0...0>
-    void prepare_basis(Outcome index);                      // |index>
-    void prepare_state(const Eigen::VectorXcd& amplitudes); // size 2^N, normalized; keeps a copy for replay
+    void prepare_basis(Outcome index);                      // |index>; qubits 64 and above start in |0>
+    void prepare_state(const Eigen::VectorXcd& amplitudes); // state vector only: size 2^N, normalized;
+                                                            // keeps a copy for replay
 
 
     // ---- Gates ----
@@ -194,14 +226,16 @@ class QuantumStateMachine
 
 
     // ---- Readout: non-destructive, not recorded ----
+    // Vector results hold 2^k entries, so they need k <= kMaxQubits on either backend.
     Eigen::VectorXd probabilities() const;                              // |a_i|^2, size 2^N
-    double probability(Outcome basisIndex) const;
+    double probability(Outcome basisIndex) const;                       // qubits >= 64 read as |0>
     Eigen::VectorXd marginal_probabilities(const QubitList& qubits) const; // size 2^k
 
     // <psi|P|psi> for P = paulis[0] on qubits[0] (x) paulis[1] on qubits[1] ..., letters IXYZ.
+    // Exactly -1, 0 or +1 on the stabilizer backend.
     double expectation(std::string_view paulis, const QubitList& qubits) const;
 
-    // Born-rule draws over `qubits` without collapse; advances the RNG.
+    // Born-rule draws over at most 64 `qubits` without collapse; advances the RNG.
     std::vector<Outcome> sample(const QubitList& qubits, std::size_t shots);
     Counts sample_counts(const QubitList& qubits, std::size_t shots);
 
@@ -220,15 +254,20 @@ class QuantumStateMachine
 
 
     private:
+    using Register = std::variant<QuantumStateVector, StabilizerState>;
+
     void validate(const Operation& op) const;
     int commit(Operation op);
+    Register blankRegister() const; // |0...0> on the live backend
     void loadPreparation(QuantumStateVector& target) const;
+    void loadPreparation(StabilizerState& target) const;
     void clearCircuit();
     void runSampled(std::uint64_t base, std::vector<Outcome>& outcomes) const;
     void runTrajectories(std::uint64_t base, std::vector<Outcome>& outcomes) const;
 
+    std::size_t nQubits;
     std::size_t nClbits;
-    QuantumStateVector live;
+    Register live;
     Outcome creg = 0;
     std::vector<Operation> ops;
     // Aligned with ops: the replay-ready form of each validated unitary, null for every
@@ -238,7 +277,7 @@ class QuantumStateMachine
     std::optional<Condition> pending;
 
     Outcome prepIndex = 0;                         // replay start when prepAmplitudes is empty
-    std::optional<QuantumStateVector> prepAmplitudes;
+    std::optional<QuantumStateVector> prepAmplitudes; // state-vector backend only
 
     std::uint64_t seedValue;
     Rng rng;

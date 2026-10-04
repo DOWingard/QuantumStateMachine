@@ -10,7 +10,8 @@
 namespace Qputer
 {
 
-// 2^25 amplitudes * 16 B = 512 MiB; Raise as needed
+// 2^25 amplitudes * 16 B = 512 MiB; Raise as needed. QuantumStateMachine's Backend::Auto
+// uses the stabilizer tableau (Clifford circuits only) above this size.
 inline constexpr std::size_t kMaxQubits = 25;
 
 class QuantumStateVector

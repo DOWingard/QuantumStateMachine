@@ -2,6 +2,8 @@
 
 #include <QuantumGates.hpp>
 #include <QuantumState.hpp>
+#include <QuantumStateMachine.hpp>
+#include <StabilizerState.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -12,11 +14,17 @@
 #include <functional>
 #include <numbers>
 #include <random>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 #include <Eigen/Dense>
 #include <gtest/gtest.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 
 
@@ -242,6 +250,25 @@ inline ::testing::AssertionResult statesNear(const QuantumStateVector& actual, c
     return statesNear(actual.vector(), expected.vector(), tol);
 }
 
+// statesNear after rotating `actual` by the global phase that aligns it with `expected` at
+// expected's largest amplitude: states that differ only by e^{i phi} compare equal.
+inline ::testing::AssertionResult statesNearUpToPhase(const Eigen::VectorXcd& actual, const Eigen::VectorXcd& expected,
+                                                      double tol = kTol)
+{
+    if (actual.size() != expected.size()) return statesNear(actual, expected, tol);
+    Eigen::Index k = 0;
+    expected.cwiseAbs().maxCoeff(&k);
+    if (std::abs(actual[k]) == 0.0) return statesNear(actual, expected, tol);
+    const cd ratio = expected[k] / actual[k];
+    return statesNear(actual * (ratio / std::abs(ratio)), expected, tol);
+}
+
+inline ::testing::AssertionResult statesNearUpToPhase(const QuantumStateVector& actual, const Eigen::VectorXcd& expected,
+                                                      double tol = kTol)
+{
+    return statesNearUpToPhase(actual.vector(), expected, tol);
+}
+
 // Amplitudes from an index -> value list; unspecified entries are zero.
 inline Eigen::VectorXcd amplitudes(std::size_t n, std::initializer_list<std::pair<std::size_t, cd>> entries)
 {
@@ -290,6 +317,146 @@ inline GateOp randomGate(std::size_t n, std::mt19937_64& rng)
             return [=](auto& s) { QuantumGate::controlled(s, {q[3]}, {q[0], q[1], q[2]}, U); };
         }
     }
+}
+
+
+// ---- Clifford circuits (the gates both backends run) ----
+
+// Random x y z h s sdg sx cnot cz swap on random distinct qubits; two-qubit gates need n >= 2.
+inline std::vector<Qputer::Operation> randomCliffordCircuit(std::size_t n, std::size_t depth, std::mt19937_64& rng)
+{
+    using Qputer::OpKind;
+    constexpr OpKind oneQubit[] = {OpKind::X, OpKind::Y, OpKind::Z, OpKind::H, OpKind::S, OpKind::Sdg, OpKind::SX};
+    constexpr OpKind twoQubit[] = {OpKind::CNOT, OpKind::CZ, OpKind::Swap};
+    std::uniform_int_distribution<std::size_t> pick(0, n >= 2 ? 9 : 6);
+
+    std::vector<Qputer::Operation> ops(depth);
+    for (auto& op : ops)
+    {
+        const std::size_t g = pick(rng);
+        if (g < 7)
+        {
+            op.kind = oneQubit[g];
+            op.targets = randomQubits(n, 1, rng);
+            continue;
+        }
+        op.kind = twoQubit[g - 7];
+        const QubitList q = randomQubits(n, 2, rng);
+        if (op.kind == OpKind::Swap) op.targets = q;
+        else
+        {
+            op.controls = {q[0]};
+            op.targets = {q[1]};
+        }
+    }
+    return ops;
+}
+
+// Full 2^n x 2^n operator of a Clifford op, from the textbook matrices via embed().
+inline Eigen::MatrixXcd cliffordMatrix(std::size_t n, const Qputer::Operation& op)
+{
+    using Qputer::OpKind;
+    switch (op.kind)
+    {
+        case OpKind::X:    return embed(n, {}, op.targets, matX());
+        case OpKind::Y:    return embed(n, {}, op.targets, matY());
+        case OpKind::Z:    return embed(n, {}, op.targets, matZ());
+        case OpKind::H:    return embed(n, {}, op.targets, matH());
+        case OpKind::S:    return embed(n, {}, op.targets, matS());
+        case OpKind::Sdg:  return embed(n, {}, op.targets, matSdg());
+        case OpKind::SX:   return embed(n, {}, op.targets, matSX());
+        case OpKind::CNOT: return embed(n, op.controls, op.targets, matX());
+        case OpKind::CZ:   return embed(n, op.controls, op.targets, matZ());
+        case OpKind::Swap: return embed(n, {}, op.targets, matSwap());
+        default: throw std::invalid_argument("cliffordMatrix: not a Clifford gate");
+    }
+}
+
+// The circuit applied to |0...0> through cliffordMatrix: the independent oracle.
+inline Eigen::VectorXcd referenceState(std::size_t n, const std::vector<Qputer::Operation>& ops)
+{
+    Eigen::VectorXcd v = amplitudes(n, {{0, 1.0}});
+    for (const auto& op : ops) v = cliffordMatrix(n, op) * v;
+    return v;
+}
+
+inline void applyClifford(Qputer::StabilizerState& t, const Qputer::Operation& op)
+{
+    using Qputer::OpKind;
+    switch (op.kind)
+    {
+        case OpKind::X:    t.x(op.targets[0]); break;
+        case OpKind::Y:    t.y(op.targets[0]); break;
+        case OpKind::Z:    t.z(op.targets[0]); break;
+        case OpKind::H:    t.h(op.targets[0]); break;
+        case OpKind::S:    t.s(op.targets[0]); break;
+        case OpKind::Sdg:  t.sdg(op.targets[0]); break;
+        case OpKind::SX:   t.sx(op.targets[0]); break;
+        case OpKind::CNOT: t.cnot(op.controls[0], op.targets[0]); break;
+        case OpKind::CZ:   t.cz(op.controls[0], op.targets[0]); break;
+        case OpKind::Swap: t.swap(op.targets[0], op.targets[1]); break;
+        default: throw std::invalid_argument("applyClifford: not a Clifford gate");
+    }
+}
+
+// <v|P|v> for P = paulis[k] on qubits[k], built from textbook matrices via embed().
+inline double referenceExpectation(std::size_t n, const Eigen::VectorXcd& v, std::string_view paulis,
+                                   const QubitList& qubits)
+{
+    Eigen::VectorXcd pv = v;
+    for (std::size_t k = 0; k < paulis.size(); ++k)
+    {
+        const Eigen::Matrix2cd m = paulis[k] == 'X' ? matX() : paulis[k] == 'Y' ? matY()
+                                 : paulis[k] == 'Z' ? matZ() : matI();
+        pv = embed(n, {}, {qubits[k]}, m) * pv;
+    }
+    return v.dot(pv).real();
+}
+
+// Every Pauli string over n qubits, letter k acting on qubit k.
+inline std::vector<std::string> allPauliStrings(std::size_t n)
+{
+    std::vector<std::string> out{""};
+    for (std::size_t q = 0; q < n; ++q)
+    {
+        std::vector<std::string> next;
+        for (const auto& s : out)
+            for (const char c : {'I', 'X', 'Y', 'Z'}) next.push_back(s + c);
+        out = std::move(next);
+    }
+    return out;
+}
+
+
+// ---- Statistics and threading ----
+
+inline ::testing::AssertionResult withinSigmas(double observed, double p, std::size_t shots, double sigmas = 5.0)
+{
+    const double sigma = std::sqrt(p * (1.0 - p) / static_cast<double>(shots));
+    if (std::abs(observed - p) <= sigmas * sigma + 1e-12) return ::testing::AssertionSuccess();
+    return ::testing::AssertionFailure() << std::format("frequency {:.5f} vs p = {:.5f} ({:.1f} sigma)",
+                                                        observed, p, std::abs(observed - p) / sigma);
+}
+
+inline double frequency(const Qputer::Counts& counts, Qputer::Outcome o, std::size_t shots)
+{
+    return counts.contains(o) ? static_cast<double>(counts.at(o)) / static_cast<double>(shots) : 0.0;
+}
+
+// Runs `body` with the OpenMP team size pinned, restoring the previous setting.
+template <class F>
+auto withThreads(int threads, F&& body)
+{
+#ifdef _OPENMP
+    const int saved = omp_get_max_threads();
+    omp_set_num_threads(threads);
+    auto result = body();
+    omp_set_num_threads(saved);
+    return result;
+#else
+    (void)threads;
+    return body();
+#endif
 }
 
 

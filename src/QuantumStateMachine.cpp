@@ -15,7 +15,9 @@
 #include <random>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <variant>
 
 
 
@@ -48,18 +50,21 @@ namespace
         int controls;
         int targets;
         int params;
+        bool stabilizer; // runs on the stabilizer backend
     };
 
     constexpr std::array<Spec, 26> kSpecs{{
-        {"x", 0, 1, 0},       {"y", 0, 1, 0},     {"z", 0, 1, 0},       {"h", 0, 1, 0},
-        {"s", 0, 1, 0},       {"sdg", 0, 1, 0},   {"t", 0, 1, 0},       {"tdg", 0, 1, 0},
-        {"sx", 0, 1, 0},      {"rx", 0, 1, 1},    {"ry", 0, 1, 1},      {"rz", 0, 1, 1},
-        {"phase", 0, 1, 1},   {"u3", 0, 1, 3},
-        {"cnot", 1, 1, 0},    {"cz", 1, 1, 0},    {"cphase", 1, 1, 1},  {"swap", 0, 2, 0},
-        {"toffoli", 2, 1, 0}, {"fredkin", 1, 2, 0},
-        {"mcx", kAny, 1, 0},  {"mcz", 0, kAny, 0}, {"mcphase", 0, kAny, 1},
-        {"unitary", kAny, kAny, 0},
-        {"measure", 0, 1, 0}, {"reset", 0, 1, 0},
+        {"x", 0, 1, 0, true},        {"y", 0, 1, 0, true},     {"z", 0, 1, 0, true},
+        {"h", 0, 1, 0, true},        {"s", 0, 1, 0, true},     {"sdg", 0, 1, 0, true},
+        {"t", 0, 1, 0, false},       {"tdg", 0, 1, 0, false},  {"sx", 0, 1, 0, true},
+        {"rx", 0, 1, 1, false},      {"ry", 0, 1, 1, false},   {"rz", 0, 1, 1, false},
+        {"phase", 0, 1, 1, false},   {"u3", 0, 1, 3, false},
+        {"cnot", 1, 1, 0, true},     {"cz", 1, 1, 0, true},    {"cphase", 1, 1, 1, false},
+        {"swap", 0, 2, 0, true},
+        {"toffoli", 2, 1, 0, false}, {"fredkin", 1, 2, 0, false},
+        {"mcx", kAny, 1, 0, false},  {"mcz", 0, kAny, 0, false}, {"mcphase", 0, kAny, 1, false},
+        {"unitary", kAny, kAny, 0, false},
+        {"measure", 0, 1, 0, true},  {"reset", 0, 1, 0, true},
     }};
     static_assert(static_cast<std::size_t>(OpKind::Reset) + 1 == kSpecs.size());
 
@@ -70,20 +75,68 @@ namespace
         return kSpecs[k];
     }
 
-    // Range + distinctness over every list; returns the union mask.
-    Index claimQubits(std::size_t n, std::string_view ctx, std::initializer_list<std::span<const Qubit>> lists)
+    // Range + distinctness over every list: a bitmask while qubits fit a word, sorting beyond.
+    void claimQubits(std::size_t n, std::string_view ctx, std::initializer_list<std::span<const Qubit>> lists)
     {
-        Index seen = 0;
+        auto requireInRange = [&](Qubit q)
+        {
+            if (q >= n) throw std::out_of_range(std::format("{}: qubit {} out of range [0, {})", ctx, q, n));
+        };
+        auto duplicate = [&](Qubit q)
+        {
+            return std::invalid_argument(std::format("{}: qubit {} used more than once", ctx, q));
+        };
+
+        if (n <= 64)
+        {
+            Index seen = 0;
+            for (const auto list : lists)
+                for (const Qubit q : list)
+                {
+                    requireInRange(q);
+                    if (seen & bit(q)) throw duplicate(q);
+                    seen |= bit(q);
+                }
+            return;
+        }
+
+        std::vector<Qubit> all;
         for (const auto list : lists)
             for (const Qubit q : list)
             {
-                if (q >= n)
-                    throw std::out_of_range(std::format("{}: qubit {} out of range [0, {})", ctx, q, n));
-                if (seen & bit(q))
-                    throw std::invalid_argument(std::format("{}: qubit {} used more than once", ctx, q));
-                seen |= bit(q);
+                requireInRange(q);
+                all.push_back(q);
             }
-        return seen;
+        std::ranges::sort(all);
+        if (const auto dup = std::ranges::adjacent_find(all); dup != all.end()) throw duplicate(*dup);
+    }
+
+    std::string stabilizerOpNames()
+    {
+        std::string names;
+        for (const Spec& spec : kSpecs)
+            if (spec.stabilizer) names += std::format("{}{}", names.empty() ? "" : " ", spec.name);
+        return names;
+    }
+
+    std::variant<QuantumStateVector, StabilizerState> makeRegister(std::size_t n, Backend backend)
+    {
+        if (backend == Backend::Auto) backend = n <= kMaxQubits ? Backend::StateVector : Backend::Stabilizer;
+        switch (backend)
+        {
+            case Backend::StateVector:
+                if (n > kMaxQubits)
+                    throw std::length_error(std::format("QuantumStateMachine: {} qubits exceed the state-vector "
+                                                        "limit {}; Backend::Stabilizer runs Clifford circuits "
+                                                        "up to {}", n, kMaxQubits, kMaxStabilizerQubits));
+                return std::variant<QuantumStateVector, StabilizerState>{std::in_place_type<QuantumStateVector>, n};
+            case Backend::Stabilizer:
+                return std::variant<QuantumStateVector, StabilizerState>{std::in_place_type<StabilizerState>, n};
+            case Backend::Auto:
+                break;
+        }
+        throw std::invalid_argument(std::format("QuantumStateMachine: unknown backend {}",
+                                                static_cast<int>(backend)));
     }
 
     void requireReadoutQubits(const QubitList& qubits, std::size_t n, std::string_view ctx)
@@ -108,12 +161,20 @@ namespace
         return r;
     }
 
-    // Returns the measured value for measure, -1 otherwise (including skipped operations).
-    // `dense` is the prepared form of op when op is a unitary, unused otherwise.
-    int execute(QuantumStateVector& s, Outcome& creg, const Operation& op, const detail::DenseGate* dense, Rng& rng)
+    // One draw, like the state vector: its top bit is u < 1/2, the outcome u * total < w0
+    // picks when w0 = total / 2. A certain outcome ignores the draw on both backends.
+    int measureQubit(StabilizerState& s, Qubit q, Rng& rng)
     {
-        if (op.condition && (((creg >> op.condition->clbit) & 1U) != 0) != op.condition->value) return -1;
+        return s.measure(q, static_cast<int>(rng() >> 63));
+    }
 
+    void flipQubit(QuantumStateVector& s, Qubit q) { QuantumGate::x(s, q); }
+    void flipQubit(StabilizerState& s, Qubit q) { s.x(q); }
+
+    // Every operation except measure and reset. `dense` is the prepared form of op when op is
+    // a unitary, unused otherwise.
+    void applyGate(QuantumStateVector& s, const Operation& op, const detail::DenseGate* dense)
+    {
         const QubitList& c = op.controls;
         const QubitList& t = op.targets;
         const std::vector<double>& p = op.params;
@@ -145,16 +206,54 @@ namespace
             case OpKind::MCPhase: QuantumGate::mcphase(s, t, p[0]); break;
             case OpKind::Unitary: detail::applyDense(s, *dense); break;
             case OpKind::Measure:
+            case OpKind::Reset:
+                throw std::logic_error(std::format("applyGate: {} is not a gate", opName(op.kind)));
+        }
+    }
+
+    void applyGate(StabilizerState& s, const Operation& op, const detail::DenseGate*)
+    {
+        const QubitList& c = op.controls;
+        const QubitList& t = op.targets;
+
+        switch (op.kind)
+        {
+            case OpKind::X:    s.x(t[0]); break;
+            case OpKind::Y:    s.y(t[0]); break;
+            case OpKind::Z:    s.z(t[0]); break;
+            case OpKind::H:    s.h(t[0]); break;
+            case OpKind::S:    s.s(t[0]); break;
+            case OpKind::Sdg:  s.sdg(t[0]); break;
+            case OpKind::SX:   s.sx(t[0]); break;
+            case OpKind::CNOT: s.cnot(c[0], t[0]); break;
+            case OpKind::CZ:   s.cz(c[0], t[0]); break;
+            case OpKind::Swap: s.swap(t[0], t[1]); break;
+            default: // validate() rejects every other kind on this backend
+                throw std::logic_error(std::format("applyGate: {} reached the stabilizer backend", opName(op.kind)));
+        }
+    }
+
+    // Returns the measured value for measure, -1 otherwise (including skipped operations).
+    template <class State>
+    int execute(State& s, Outcome& creg, const Operation& op, const detail::DenseGate* dense, Rng& rng)
+    {
+        if (op.condition && (((creg >> op.condition->clbit) & 1U) != 0) != op.condition->value) return -1;
+
+        switch (op.kind)
+        {
+            case OpKind::Measure:
             {
-                const int r = measureQubit(s, t[0], rng);
+                const int r = measureQubit(s, op.targets[0], rng);
                 if (op.clbit) creg = (creg & ~bit(*op.clbit)) | (static_cast<Outcome>(r) << *op.clbit);
                 return r;
             }
             case OpKind::Reset:
-                if (measureQubit(s, t[0], rng) == 1) QuantumGate::x(s, t[0]);
-                break;
+                if (measureQubit(s, op.targets[0], rng) == 1) flipQubit(s, op.targets[0]);
+                return -1;
+            default:
+                applyGate(s, op, dense);
+                return -1;
         }
-        return -1;
     }
 
     // Inclusive prefix sums of the marginal over `qubits`. `last` is the highest outcome
@@ -244,6 +343,102 @@ namespace
         return counts;
     }
 
+    // Writes the outcome of rank j in `sup` (see OutcomeSupport), j read MSB first from the top
+    // bits of successive draws. For d <= 53 that is rank floor(u 2^d) with u = r.uniform() of
+    // the same first draw: the outcome a state vector's CDF search picks from equal weights
+    // 2^-d, which keeps seeded results identical across backends.
+    void selectOutcome(const OutcomeSupport& sup, Rng& r, std::uint64_t* out) noexcept
+    {
+        std::copy(sup.offset.begin(), sup.offset.end(), out);
+        std::uint64_t draw = r();
+        for (std::size_t m = 0; m < sup.dimension(); ++m)
+        {
+            if (m != 0 && m % 64 == 0) draw = r();
+            if ((draw >> (63 - m % 64)) & 1U)
+            {
+                const auto row = sup.row(m);
+                for (std::size_t k = 0; k < sup.words; ++k) out[k] ^= row[k];
+            }
+        }
+    }
+
+    QubitList allQubits(std::size_t n)
+    {
+        QubitList all(n);
+        std::iota(all.begin(), all.end(), Qubit{0});
+        return all;
+    }
+
+    // What run() reads from a terminally measured circuit: the distinct measured qubits in
+    // order of first measurement, and for each measurement into a clbit, which of them it
+    // copies, in circuit order (a later write to the same clbit wins).
+    struct Write
+    {
+        std::size_t from, clbit;
+    };
+
+    struct TerminalReadout
+    {
+        QubitList measured;
+        std::vector<Write> writes;
+    };
+
+    TerminalReadout terminalReadout(const std::vector<Operation>& ops, std::size_t n)
+    {
+        TerminalReadout ro;
+        std::vector<std::size_t> position(n, n);
+        for (const Operation& op : ops)
+        {
+            if (op.kind != OpKind::Measure) continue;
+            const Qubit q = op.targets[0];
+            if (position[q] == n)
+            {
+                position[q] = ro.measured.size();
+                ro.measured.push_back(q);
+            }
+            if (op.clbit) ro.writes.push_back({position[q], *op.clbit});
+        }
+        return ro;
+    }
+
+    // Classical register for one joint outcome over ro.measured (bit j in word j / 64).
+    Outcome registerFrom(const std::uint64_t* outcome, std::span<const Write> writes) noexcept
+    {
+        Outcome reg = 0;
+        for (const auto& [from, clbit] : writes)
+            reg = (reg & ~bit(clbit)) | (((outcome[from / 64] >> (from % 64)) & 1U) << clbit);
+        return reg;
+    }
+
+    // outcomes[shot] := register of shot drawn from stream (base, shot), given the state after
+    // the circuit's unitary part.
+    void sampleRegisters(const QuantumStateVector& s, const TerminalReadout& ro, std::uint64_t base,
+                         std::vector<Outcome>& outcomes)
+    {
+        drawMany(marginalCdf(s, ro.measured), base, outcomes);
+        const std::size_t shots = outcomes.size();
+        QPUTER_OMP(parallel for schedule(static) if(shots >= kParallelSampleShots))
+        for (std::size_t shot = 0; shot < shots; ++shot) outcomes[shot] = registerFrom(&outcomes[shot], ro.writes);
+    }
+
+    void sampleRegisters(const StabilizerState& s, const TerminalReadout& ro, std::uint64_t base,
+                         std::vector<Outcome>& outcomes)
+    {
+        const OutcomeSupport sup = s.outcome_support(ro.measured);
+        const std::size_t shots = outcomes.size();
+        QPUTER_OMP(parallel if(shots >= kParallelSampleShots))
+        {
+            std::vector<std::uint64_t> joint(sup.words); // more than 64 qubits may be measured
+            QPUTER_OMP(for schedule(static))
+            for (std::size_t shot = 0; shot < shots; ++shot)
+            {
+                Rng r{base, shot};
+                selectOutcome(sup, r, joint.data());
+                outcomes[shot] = registerFrom(joint.data(), ro.writes);
+            }
+        }
+    }
+
     // Operations with only the given fields set; matrix / clbit / condition stay empty.
     Operation makeOp(OpKind kind, QubitList controls, QubitList targets, std::vector<double> params = {})
     {
@@ -277,14 +472,17 @@ std::optional<OpKind> opKindFromName(std::string_view name)
     return std::nullopt;
 }
 
+bool stabilizerSupports(OpKind kind) { return specOf(kind).stabilizer; }
+
 
 
 // ---- System ----
 
 QuantumStateMachine::QuantumStateMachine(std::size_t numQubits, std::size_t numClbits,
-                                         std::optional<std::uint64_t> seed)
-    : nClbits(numClbits),
-      live(numQubits),
+                                         std::optional<std::uint64_t> seed, Backend backend)
+    : nQubits(numQubits),
+      nClbits(numClbits),
+      live(makeRegister(numQubits, backend)),
       seedValue(seed.value_or(0)),
       rng(seedValue)
 {
@@ -310,6 +508,36 @@ bool QuantumStateMachine::clbit(std::size_t index) const
     return (creg >> index) & 1U;
 }
 
+Backend QuantumStateMachine::backend() const
+{
+    return std::holds_alternative<StabilizerState>(live) ? Backend::Stabilizer : Backend::StateVector;
+}
+
+const QuantumStateVector& QuantumStateMachine::state() const
+{
+    if (const auto* s = std::get_if<QuantumStateVector>(&live)) return *s;
+    throw std::logic_error("QuantumStateMachine::state: the stabilizer backend holds a tableau; "
+                           "use stabilizer_state() or state_vector()");
+}
+
+const StabilizerState& QuantumStateMachine::stabilizer_state() const
+{
+    if (const auto* t = std::get_if<StabilizerState>(&live)) return *t;
+    throw std::logic_error("QuantumStateMachine::stabilizer_state: the state-vector backend holds no tableau");
+}
+
+QuantumStateVector QuantumStateMachine::state_vector() const
+{
+    if (const auto* t = std::get_if<StabilizerState>(&live)) return t->to_state_vector();
+    return std::get<QuantumStateVector>(live);
+}
+
+QuantumStateMachine::Register QuantumStateMachine::blankRegister() const
+{
+    if (backend() == Backend::Stabilizer) return Register{std::in_place_type<StabilizerState>, nQubits};
+    return Register{std::in_place_type<QuantumStateVector>, nQubits};
+}
+
 
 
 // ---- Preparation ----
@@ -326,10 +554,11 @@ void QuantumStateMachine::prepare() { prepare_basis(0); }
 
 void QuantumStateMachine::prepare_basis(Outcome index)
 {
-    if (index >= live.size())
+    if (nQubits < 64 && index >= bit(nQubits))
         throw std::out_of_range(std::format("QuantumStateMachine::prepare_basis: index {} out of range [0, {})",
-                                            index, live.size()));
-    detail::setBasis(live, index);
+                                            index, bit(nQubits)));
+    if (auto* t = std::get_if<StabilizerState>(&live)) t->set_basis(index);
+    else detail::setBasis(std::get<QuantumStateVector>(live), index);
     prepIndex = index;
     prepAmplitudes.reset();
     clearCircuit();
@@ -338,9 +567,12 @@ void QuantumStateMachine::prepare_basis(Outcome index)
 void QuantumStateMachine::prepare_state(const Eigen::VectorXcd& amplitudes)
 {
     constexpr std::string_view ctx = "QuantumStateMachine::prepare_state";
-    if (static_cast<std::size_t>(amplitudes.size()) != live.size())
+    if (backend() == Backend::Stabilizer)
+        throw std::invalid_argument(std::format("{}: the stabilizer backend cannot load amplitudes; "
+                                                "use prepare_basis and Clifford gates", ctx));
+    if (static_cast<std::size_t>(amplitudes.size()) != bit(nQubits))
         throw std::invalid_argument(std::format("{}: {} amplitudes, expected {} for {} qubits",
-                                                ctx, amplitudes.size(), live.size(), num_qubits()));
+                                                ctx, amplitudes.size(), bit(nQubits), nQubits));
     if (!amplitudes.allFinite())
         throw std::invalid_argument(std::format("{}: amplitudes contain NaN or Inf", ctx));
     const double normSq = amplitudes.squaredNorm();
@@ -349,7 +581,7 @@ void QuantumStateMachine::prepare_state(const Eigen::VectorXcd& amplitudes)
                                                 ctx, normSq, kNormTolerance));
 
     live = QuantumStateVector{amplitudes};
-    prepAmplitudes = live;
+    prepAmplitudes = std::get<QuantumStateVector>(live);
     clearCircuit();
 }
 
@@ -359,6 +591,8 @@ void QuantumStateMachine::loadPreparation(QuantumStateVector& target) const
     else detail::setBasis(target, prepIndex);
 }
 
+void QuantumStateMachine::loadPreparation(StabilizerState& target) const { target.set_basis(prepIndex); }
+
 
 
 // ---- Validation / commit ----
@@ -367,6 +601,9 @@ void QuantumStateMachine::validate(const Operation& op) const
 {
     const Spec& spec = specOf(op.kind);
     const std::string ctx = std::format("QuantumStateMachine::{}", spec.name);
+    if (!spec.stabilizer && backend() == Backend::Stabilizer)
+        throw std::invalid_argument(std::format("{}: not a Clifford operation; the stabilizer backend runs only {}",
+                                                ctx, stabilizerOpNames()));
 
     auto requireCount = [&](std::string_view role, std::size_t got, int want)
     {
@@ -424,7 +661,7 @@ int QuantumStateMachine::commit(Operation op)
     if (op.kind == OpKind::Unitary)
         prepared = std::make_shared<const detail::DenseGate>(detail::prepareDense(op.controls, op.targets, op.matrix));
 
-    const int result = execute(live, creg, op, prepared.get(), rng);
+    const int result = std::visit([&](auto& s) { return execute(s, creg, op, prepared.get(), rng); }, live);
     dense.push_back(std::move(prepared));
     try
     {
@@ -583,11 +820,22 @@ Outcome QuantumStateMachine::measure_all()
         throw std::invalid_argument(std::format("{}: {} clbits cannot hold {} qubits", ctx, nClbits, n));
 
     // One joint draw over all 2^N outcomes: equivalent in distribution to N sequential
-    // single-qubit measurements, at the cost of two passes instead of 2N.
-    const Index index = detail::findCumulative(live, rng.uniform());
-    detail::collapse(live, live.size() - 1, index, 1.0 / std::abs(live[index]));
+    // single-qubit measurements, at the cost of two passes instead of 2N. The tableau draws
+    // the same outcome by rank, then collapses each qubit onto its bit.
+    Index index = 0;
+    if (auto* t = std::get_if<StabilizerState>(&live))
+    {
+        selectOutcome(t->outcome_support(allQubits(n)), rng, &index); // n <= 64: one word
+        for (Qubit q = 0; q < n; ++q) t->measure(q, static_cast<int>((index >> q) & 1U));
+    }
+    else
+    {
+        auto& s = std::get<QuantumStateVector>(live);
+        index = detail::findCumulative(s, rng.uniform());
+        detail::collapse(s, s.size() - 1, index, 1.0 / std::abs(s[index]));
+    }
 
-    const Outcome mask = bit(n) - 1;
+    const Outcome mask = n == 64 ? ~Outcome{0} : bit(n) - 1;
     creg = (creg & ~mask) | index;
     ops.reserve(ops.size() + n);
     for (Qubit q = 0; q < n; ++q)
@@ -605,25 +853,63 @@ Outcome QuantumStateMachine::measure_all()
 
 Eigen::VectorXd QuantumStateMachine::probabilities() const
 {
-    Eigen::VectorXd p(static_cast<Eigen::Index>(live.size()));
-    detail::squaredMagnitudes(live, p.data());
+    if (backend() == Backend::Stabilizer)
+    {
+        if (nQubits > kMaxQubits)
+            throw std::length_error(std::format("QuantumStateMachine::probabilities: 2^{} outcomes exceed the "
+                                                "2^{} readout limit", nQubits, kMaxQubits));
+        return marginal_probabilities(allQubits(nQubits));
+    }
+    const auto& s = std::get<QuantumStateVector>(live);
+    Eigen::VectorXd p(static_cast<Eigen::Index>(s.size()));
+    detail::squaredMagnitudes(s, p.data());
     return p;
 }
 
 double QuantumStateMachine::probability(Outcome basisIndex) const
 {
-    if (basisIndex >= live.size())
+    if (nQubits < 64 && basisIndex >= bit(nQubits))
         throw std::out_of_range(std::format("QuantumStateMachine::probability: index {} out of range [0, {})",
-                                            basisIndex, live.size()));
-    const auto a = live[basisIndex];
+                                            basisIndex, bit(nQubits)));
+    if (const auto* t = std::get_if<StabilizerState>(&live))
+    {
+        const OutcomeSupport sup = t->outcome_support(allQubits(nQubits));
+        std::vector<std::uint64_t> target(sup.words, 0);
+        target[0] = basisIndex;
+        return sup.contains(target) ? std::ldexp(1.0, -static_cast<int>(sup.dimension())) : 0.0;
+    }
+    const auto a = std::get<QuantumStateVector>(live)[basisIndex];
     return a.real() * a.real() + a.imag() * a.imag();
 }
 
 Eigen::VectorXd QuantumStateMachine::marginal_probabilities(const QubitList& qubits) const
 {
-    requireReadoutQubits(qubits, num_qubits(), "QuantumStateMachine::marginal_probabilities");
+    constexpr std::string_view ctx = "QuantumStateMachine::marginal_probabilities";
+    requireReadoutQubits(qubits, nQubits, ctx);
+    if (qubits.size() > kMaxQubits)
+        throw std::length_error(std::format("{}: 2^{} outcomes exceed the 2^{} readout limit", ctx,
+                                            qubits.size(), kMaxQubits));
     Eigen::VectorXd p(static_cast<Eigen::Index>(bit(qubits.size())));
-    detail::marginalWeights(live, qubits, p.data());
+
+    if (const auto* t = std::get_if<StabilizerState>(&live))
+    {
+        // Uniform 2^-d over the support, visited in Gray-code order: step j flips count bit
+        // ctz(j), which is basis row d-1-ctz(j). k <= kMaxQubits, so outcomes are one word.
+        const OutcomeSupport sup = t->outcome_support(qubits);
+        const std::size_t d = sup.dimension();
+        const double weight = std::ldexp(1.0, -static_cast<int>(d));
+        p.setZero();
+        Outcome o = sup.offset[0];
+        p[static_cast<Eigen::Index>(o)] = weight;
+        for (Outcome j = 1; j < bit(d); ++j)
+        {
+            o ^= sup.row(d - 1 - static_cast<std::size_t>(std::countr_zero(j)))[0];
+            p[static_cast<Eigen::Index>(o)] = weight;
+        }
+        return p;
+    }
+
+    detail::marginalWeights(std::get<QuantumStateVector>(live), qubits, p.data());
     return p;
 }
 
@@ -633,7 +919,13 @@ double QuantumStateMachine::expectation(std::string_view paulis, const QubitList
     if (paulis.size() != qubits.size())
         throw std::invalid_argument(std::format("{}: {} Pauli letters for {} qubits", ctx, paulis.size(),
                                                 qubits.size()));
-    claimQubits(num_qubits(), ctx, {qubits});
+    claimQubits(nQubits, ctx, {qubits});
+    for (const char letter : paulis)
+        if (letter != 'I' && letter != 'X' && letter != 'Y' && letter != 'Z')
+            throw std::invalid_argument(std::format("{}: invalid Pauli letter '{}' (expected I, X, Y, Z)",
+                                                    ctx, letter));
+
+    if (const auto* t = std::get_if<StabilizerState>(&live)) return t->expectation(paulis, qubits);
 
     // P = i^{#Y} X^x Z^z with Y = iXZ, so P|i> = i^{#Y} (-1)^{|i & z|} |i ^ x>.
     Index xMask = 0, zMask = 0;
@@ -643,17 +935,14 @@ double QuantumStateMachine::expectation(std::string_view paulis, const QubitList
         const Index b = bit(qubits[k]);
         switch (paulis[k])
         {
-            case 'I': break;
             case 'X': xMask |= b; break;
             case 'Z': zMask |= b; break;
             case 'Y': xMask |= b; zMask |= b; ++numY; break;
-            default:
-                throw std::invalid_argument(std::format("{}: invalid Pauli letter '{}' (expected I, X, Y, Z)",
-                                                        ctx, paulis[k]));
+            default: break; // 'I'
         }
     }
 
-    const std::complex<double> sum = detail::pauliSum(live, xMask, zMask);
+    const std::complex<double> sum = detail::pauliSum(std::get<QuantumStateVector>(live), xMask, zMask);
     switch (numY % 4)
     {
         case 0:  return sum.real();
@@ -665,9 +954,27 @@ double QuantumStateMachine::expectation(std::string_view paulis, const QubitList
 
 std::vector<Outcome> QuantumStateMachine::sample(const QubitList& qubits, std::size_t shots)
 {
-    requireReadoutQubits(qubits, num_qubits(), "QuantumStateMachine::sample");
+    constexpr std::string_view ctx = "QuantumStateMachine::sample";
+    requireReadoutQubits(qubits, nQubits, ctx);
     std::vector<Outcome> out(shots);
-    drawMany(marginalCdf(live, qubits), rng(), out);
+
+    if (const auto* t = std::get_if<StabilizerState>(&live))
+    {
+        if (qubits.size() > 64)
+            throw std::invalid_argument(std::format("{}: {} qubits exceed the 64-bit outcome width", ctx,
+                                                    qubits.size()));
+        const OutcomeSupport sup = t->outcome_support(qubits);
+        const std::uint64_t base = rng();
+        QPUTER_OMP(parallel for schedule(static) if(shots >= kParallelSampleShots))
+        for (std::size_t shot = 0; shot < shots; ++shot)
+        {
+            Rng r{base, shot};
+            selectOutcome(sup, r, &out[shot]);
+        }
+        return out;
+    }
+
+    drawMany(marginalCdf(std::get<QuantumStateVector>(live), qubits), rng(), out);
     return out;
 }
 
@@ -683,15 +990,19 @@ Counts QuantumStateMachine::sample_counts(const QubitList& qubits, std::size_t s
 
 bool QuantumStateMachine::terminal_measurements_only() const
 {
-    Index measured = 0;
+    std::vector<char> measured(nQubits, 0);
     for (const Operation& op : ops)
     {
         if (op.kind == OpKind::Reset || op.condition) return false;
-        Index touched = 0;
-        for (const Qubit q : op.controls) touched |= bit(q);
-        for (const Qubit q : op.targets) touched |= bit(q);
-        if (op.kind == OpKind::Measure) measured |= touched;
-        else if (touched & measured) return false;
+        if (op.kind == OpKind::Measure)
+        {
+            measured[op.targets[0]] = 1;
+            continue;
+        }
+        for (const Qubit q : op.controls)
+            if (measured[q]) return false;
+        for (const Qubit q : op.targets)
+            if (measured[q]) return false;
     }
     return true;
 }
@@ -718,55 +1029,33 @@ Counts QuantumStateMachine::run(std::size_t shots)
 
 void QuantumStateMachine::runSampled(std::uint64_t base, std::vector<Outcome>& outcomes) const
 {
-    QuantumStateVector scratch{num_qubits()};
-    loadPreparation(scratch);
-    Outcome unusedCreg = 0;
-    Rng unusedRng{base}; // no measure, reset or condition reaches execute() on this path
-    for (std::size_t k = 0; k < ops.size(); ++k)
-        if (ops[k].kind != OpKind::Measure) execute(scratch, unusedCreg, ops[k], dense[k].get(), unusedRng);
-
-    // Joint distribution over the distinct measured qubits, then each recorded
-    // measurement copies its qubit's sampled bit into its clbit, in circuit order.
-    QubitList measured;
-    std::vector<std::size_t> position(num_qubits(), num_qubits());
-    struct Write { std::size_t from, clbit; };
-    std::vector<Write> writes;
-    for (const Operation& op : ops)
+    // Simulate the unitary part once, then draw the joint outcome of the distinct measured
+    // qubits per shot; each recorded measurement copies its qubit's bit into its clbit.
+    Register scratch = blankRegister();
+    std::visit([&](auto& s)
     {
-        if (op.kind != OpKind::Measure) continue;
-        const Qubit q = op.targets[0];
-        if (position[q] == num_qubits())
-        {
-            position[q] = measured.size();
-            measured.push_back(q);
-        }
-        if (op.clbit) writes.push_back({position[q], *op.clbit});
-    }
-
-    drawMany(marginalCdf(scratch, measured), base, outcomes);
-    const std::size_t shots = outcomes.size();
-
-    QPUTER_OMP(parallel for schedule(static) if(shots >= kParallelSampleShots))
-    for (std::size_t shot = 0; shot < shots; ++shot)
-    {
-        const Outcome o = outcomes[shot];
-        Outcome reg = 0;
-        for (const auto& [from, clbit] : writes) reg = (reg & ~bit(clbit)) | (((o >> from) & 1U) << clbit);
-        outcomes[shot] = reg;
-    }
+        loadPreparation(s);
+        Outcome unusedCreg = 0;
+        Rng unusedRng{base}; // no measure, reset or condition reaches execute() on this path
+        for (std::size_t k = 0; k < ops.size(); ++k)
+            if (ops[k].kind != OpKind::Measure) execute(s, unusedCreg, ops[k], dense[k].get(), unusedRng);
+        sampleRegisters(s, terminalReadout(ops, nQubits), base, outcomes);
+    }, scratch);
 }
 
 void QuantumStateMachine::runTrajectories(std::uint64_t base, std::vector<Outcome>& outcomes) const
 {
     const std::size_t shots = outcomes.size();
-    // Small registers leave the gate kernels serial, so parallelize across shots instead;
-    // large ones run shots in sequence and let every gate use all threads.
-    [[maybe_unused]] const bool shotParallel = live.size() < detail::kParallelThreshold && shots > 1;
+    // Tableaus (O(N) gates) and small state vectors leave the gate kernels serial, so
+    // parallelize across shots instead; large state vectors run shots in sequence and let
+    // every gate use all threads.
+    [[maybe_unused]] const bool shotParallel =
+        (backend() == Backend::Stabilizer || bit(nQubits) < detail::kParallelThreshold) && shots > 1;
     std::exception_ptr failure;
 
     QPUTER_OMP(parallel if(shotParallel))
     {
-        QuantumStateVector scratch{num_qubits()};
+        Register scratch = blankRegister();
 
         // Feed-forward makes trajectory cost vary, hence dynamic chunks.
         QPUTER_OMP(for schedule(dynamic, 16))
@@ -774,11 +1063,14 @@ void QuantumStateMachine::runTrajectories(std::uint64_t base, std::vector<Outcom
         {
             try
             {
-                loadPreparation(scratch);
-                Outcome reg = 0;
-                Rng r{base, shot};
-                for (std::size_t k = 0; k < ops.size(); ++k) execute(scratch, reg, ops[k], dense[k].get(), r);
-                outcomes[shot] = reg;
+                std::visit([&](auto& s)
+                {
+                    loadPreparation(s);
+                    Outcome reg = 0;
+                    Rng r{base, shot};
+                    for (std::size_t k = 0; k < ops.size(); ++k) execute(s, reg, ops[k], dense[k].get(), r);
+                    outcomes[shot] = reg;
+                }, scratch);
             }
             catch (...)
             {

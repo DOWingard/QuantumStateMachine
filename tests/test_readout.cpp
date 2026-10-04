@@ -47,14 +47,6 @@ double referencePauli(const Eigen::VectorXcd& psi, std::size_t n, const std::str
     return psi.dot(p.vector()).real(); // Eigen's dot conjugates the left operand
 }
 
-::testing::AssertionResult withinSigmas(double observed, double p, std::size_t shots, double sigmas = 5.0)
-{
-    const double sigma = std::sqrt(p * (1.0 - p) / static_cast<double>(shots));
-    if (std::abs(observed - p) <= sigmas * sigma + 1e-12) return ::testing::AssertionSuccess();
-    return ::testing::AssertionFailure() << std::format("frequency {:.5f} vs p = {:.5f} ({:.1f} sigma)",
-                                                        observed, p, std::abs(observed - p) / sigma);
-}
-
 } // namespace
 
 
