@@ -10,7 +10,7 @@
 namespace Qputer
 {
 
-// 2^25 amplitudes * 16 B = 512 MiB; anything larger is refused to protect host memory.
+// 2^25 amplitudes * 16 B = 512 MiB; Raise as needed
 inline constexpr std::size_t kMaxQubits = 25;
 
 class QuantumStateVector
@@ -32,6 +32,9 @@ class QuantumStateVector
 
 
     explicit QuantumStateVector(size_t n); // |0...0> on n qubits, 1 <= n <= kMaxQubits
+
+    // Copies amplitudes as given (not renormalized); size must be 2^n with 1 <= n <= kMaxQubits.
+    explicit QuantumStateVector(const Eigen::VectorXcd& amplitudes);
 
 
     size_t num_qubits() const { return n_qubits; }

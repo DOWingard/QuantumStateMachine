@@ -3,6 +3,7 @@
 #include <QuantumState.hpp>
 
 #include <cstddef>
+#include <string_view>
 #include <vector>
 #include <Eigen/Core>
 
@@ -66,6 +67,9 @@ class QuantumGate
     static void mcx(QuantumStateVector& state, const QubitList& controls, Qubit target);
     static void mcz(QuantumStateVector& state, const QubitList& qubits);             // -1 on |1...1>
     static void mcphase(QuantumStateVector& state, const QubitList& qubits, double lambda);
+
+    // Throws std::invalid_argument unless U is 2^M x 2^M and unitary within kUnitaryTolerance.
+    static void require_unitary(const Eigen::MatrixXcd& U, std::size_t numTargets, std::string_view context);
 
     // ---- Arbitrary M-target unitary, optionally controlled, M <= kMaxDenseTargets ----
     static void apply(QuantumStateVector& state, const QubitList& targets, const Eigen::MatrixXcd& U);

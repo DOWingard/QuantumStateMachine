@@ -17,13 +17,10 @@
 
 
 
-#ifdef _OPENMP
-#include <omp.h>
-// _Pragma keeps builds without OpenMP free of -Wunknown-pragmas noise.
-#define QPUTER_OMP_PARALLEL _Pragma("omp parallel if(count >= kParallelThreshold)")
-#else
-#define QPUTER_OMP_PARALLEL
-#endif
+#include "DenseGate.hpp"
+#include "Parallel.hpp"
+
+#define QPUTER_OMP_PARALLEL QPUTER_OMP(parallel if(count >= kParallelThreshold))
 
 
 
@@ -36,8 +33,7 @@ namespace
     using cd = std::complex<double>;
     using Index = std::size_t;
 
-    // Below ~2^14 iterations the OpenMP fork/join cost (~us) outweighs the work.
-    constexpr Index kParallelThreshold = Index{1} << 14;
+    using detail::kParallelThreshold;
 
     // std::complex operator* carries a NaN/Inf recovery branch (__muldc3) that blocks
     // vectorization; unitary gates on finite states never need it.
@@ -115,13 +111,9 @@ namespace
     // Static contiguous partition of [0, count) for the calling OpenMP thread.
     inline std::pair<Index, Index> threadSlice(Index count) noexcept
     {
-#ifdef _OPENMP
-        const auto nt = static_cast<Index>(omp_get_num_threads());
-        const auto t = static_cast<Index>(omp_get_thread_num());
+        const Index nt = detail::threadCount();
+        const Index t = detail::threadId();
         return {count * t / nt, count * (t + 1) / nt};
-#else
-        return {0, count};
-#endif
     }
 
     // Bits of p below the lowest active qubit pass through insertZeros unchanged, so
@@ -328,52 +320,17 @@ namespace
         kernel2(state.data(), L, bit(target), m);
     }
 
-    void requireUnitary(const Eigen::MatrixXcd& U, std::size_t m, std::string_view ctx)
-    {
-        const auto dim = static_cast<Eigen::Index>(Index{1} << m);
-        if (U.rows() != dim || U.cols() != dim)
-            throw std::invalid_argument(std::format("{}: matrix is {}x{}, expected {}x{} for {} target(s)",
-                                                    ctx, U.rows(), U.cols(), dim, dim, m));
-        const double err = (U.adjoint() * U - Eigen::MatrixXcd::Identity(dim, dim)).cwiseAbs().maxCoeff();
-        if (!(err <= QuantumGate::kUnitaryTolerance)) // negated form also rejects NaN
-            throw std::invalid_argument(std::format("{}: matrix not unitary, max|U^dag U - I| = {:.3e} > {:.1e}",
-                                                    ctx, err, QuantumGate::kUnitaryTolerance));
-    }
-
-    void applyDense(QuantumStateVector& state, std::span<const Qubit> controls, std::span<const Qubit> targets,
-                    const Eigen::MatrixXcd& U, std::string_view ctx)
+    // Validating entry point for the public API; the prepared path below does the work.
+    void applyDenseChecked(QuantumStateVector& state, std::span<const Qubit> controls,
+                           std::span<const Qubit> targets, const Eigen::MatrixXcd& U, std::string_view ctx)
     {
         const std::size_t m = targets.size();
         if (m == 0 || m > QuantumGate::kMaxDenseTargets)
             throw std::invalid_argument(std::format("{}: {} targets outside [1, {}]", ctx, m,
                                                     QuantumGate::kMaxDenseTargets));
-        const Layout L = buildLayout(state, controls, targets, ctx); // validates indices before O(8^M) check
-        requireUnitary(U, m, ctx);
-
-        const std::size_t dim = Index{1} << m;
-        if (m == 1)
-        {
-            kernel2(state.data(), L, bit(targets[0]), {U(0, 0), U(0, 1), U(1, 0), U(1, 1)});
-            return;
-        }
-
-        // offsets[v]: amplitude offset of local basis state v, targets[0] <-> MSB of v.
-        std::vector<Index> offsets(dim, 0);
-        for (std::size_t v = 0; v < dim; ++v)
-            for (std::size_t r = 0; r < m; ++r)
-                if ((v >> (m - 1 - r)) & 1U) offsets[v] |= bit(targets[r]);
-
-        std::vector<cd> rowMajor(dim * dim);
-        for (std::size_t r = 0; r < dim; ++r)
-            for (std::size_t c = 0; c < dim; ++c)
-                rowMajor[r * dim + c] = U(static_cast<Eigen::Index>(r), static_cast<Eigen::Index>(c));
-
-        switch (m)
-        {
-            case 2:  kernelDense<4>(state.data(), L, offsets, rowMajor); break;
-            case 3:  kernelDense<8>(state.data(), L, offsets, rowMajor); break;
-            default: kernelDense<0>(state.data(), L, offsets, rowMajor); break;
-        }
+        buildLayout(state, controls, targets, ctx); // validates indices before the O(8^M) check
+        QuantumGate::require_unitary(U, m, ctx);
+        detail::applyDense(state, detail::prepareDense(controls, targets, U));
     }
 
     constexpr double kInvSqrt2 = std::numbers::sqrt2 / 2.0;
@@ -382,6 +339,19 @@ namespace
 
 } // namespace
 
+
+
+void QuantumGate::require_unitary(const Eigen::MatrixXcd& U, std::size_t m, std::string_view ctx)
+{
+    const auto dim = static_cast<Eigen::Index>(Index{1} << m);
+    if (U.rows() != dim || U.cols() != dim)
+        throw std::invalid_argument(std::format("{}: matrix is {}x{}, expected {}x{} for {} target(s)",
+                                                ctx, U.rows(), U.cols(), dim, dim, m));
+    const double err = (U.adjoint() * U - Eigen::MatrixXcd::Identity(dim, dim)).cwiseAbs().maxCoeff();
+    if (!(err <= kUnitaryTolerance)) // negated form also rejects NaN
+        throw std::invalid_argument(std::format("{}: matrix not unitary, max|U^dag U - I| = {:.3e} > {:.1e}",
+                                                ctx, err, kUnitaryTolerance));
+}
 
 
 // ---- 1 qubit ----
@@ -529,13 +499,48 @@ void QuantumGate::mcphase(QuantumStateVector& state, const QubitList& qubits, do
 
 void QuantumGate::apply(QuantumStateVector& state, const QubitList& targets, const Eigen::MatrixXcd& U)
 {
-    applyDense(state, {}, targets, U, "QuantumGate::apply");
+    applyDenseChecked(state, {}, targets, U, "QuantumGate::apply");
 }
 
 void QuantumGate::controlled(QuantumStateVector& state, const QubitList& controls,
                              const QubitList& targets, const Eigen::MatrixXcd& U)
 {
-    applyDense(state, controls, targets, U, "QuantumGate::controlled");
+    applyDenseChecked(state, controls, targets, U, "QuantumGate::controlled");
+}
+
+
+// ---- Prepared dense gates ----
+
+detail::DenseGate detail::prepareDense(std::span<const Qubit> controls, std::span<const Qubit> targets,
+                                       const Eigen::MatrixXcd& U)
+{
+    const std::size_t m = targets.size();
+    const std::size_t dim = Index{1} << m;
+    DenseGate g{{controls.begin(), controls.end()}, {targets.begin(), targets.end()}, std::vector<Index>(dim, 0),
+                std::vector<cd>(dim * dim)};
+
+    // targets[0] <-> MSB of v.
+    for (std::size_t v = 0; v < dim; ++v)
+        for (std::size_t r = 0; r < m; ++r)
+            if ((v >> (m - 1 - r)) & 1U) g.offsets[v] |= bit(targets[r]);
+
+    for (std::size_t r = 0; r < dim; ++r)
+        for (std::size_t c = 0; c < dim; ++c)
+            g.rowMajor[r * dim + c] = U(static_cast<Eigen::Index>(r), static_cast<Eigen::Index>(c));
+    return g;
+}
+
+void detail::applyDense(QuantumStateVector& state, const DenseGate& g)
+{
+    const Layout L = buildLayout(state, g.controls, g.targets, "dense gate");
+    const std::vector<cd>& u = g.rowMajor;
+    switch (g.targets.size())
+    {
+        case 1:  kernel2(state.data(), L, bit(g.targets[0]), {u[0], u[1], u[2], u[3]}); break;
+        case 2:  kernelDense<4>(state.data(), L, g.offsets, u); break;
+        case 3:  kernelDense<8>(state.data(), L, g.offsets, u); break;
+        default: kernelDense<0>(state.data(), L, g.offsets, u); break;
+    }
 }
 
 

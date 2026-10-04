@@ -35,7 +35,12 @@ FetchContent_MakeAvailable(Eigen)
 add_library(qputer_lib
     src/QuantumState.cpp
     src/QuantumGates.cpp
+    src/ReadoutKernels.cpp
+    src/QuantumStateMachine.cpp
 )
+
+# PIC so the static library can be linked into a shared Python extension module.
+set_target_properties(qputer_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Specify Include Directories (Public headers)
 target_include_directories(qputer_lib PUBLIC
