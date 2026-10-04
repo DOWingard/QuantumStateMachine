@@ -4,9 +4,12 @@ PRESET := $(shell echo $(BUILD_TYPE) | tr '[:upper:]' '[:lower:]')
 BUILD_DIR := build/$(PRESET)
 JOBS ?= $(shell nproc)
 
-.PHONY: all configure build test run clean distclean
+.PHONY: all configure build test run examples docs clean distclean
 
 all: build
+
+docs:
+	doxygen Doxyfile
 
 configure:
 	cmake --preset $(PRESET)
@@ -20,6 +23,11 @@ test: build
 
 run: build
 	$(BUILD_DIR)/qputer
+
+examples: build
+	$(BUILD_DIR)/examples/phase_estimation
+	$(BUILD_DIR)/examples/variational
+	$(BUILD_DIR)/examples/repetition_code
 
 clean:
 	cmake --build $(BUILD_DIR) --target clean

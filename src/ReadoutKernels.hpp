@@ -48,4 +48,7 @@ void setBasis(QuantumStateVector& s, Index index);
 // Sizes must match.
 void copyAmplitudes(const QuantumStateVector& from, QuantumStateVector& to);
 
+// to[i] = from[i] for the to.size() amplitudes at `from`.
+void copyAmplitudes(const std::complex<double>* from, QuantumStateVector& to);
+
 } // namespace Qputer::detail

@@ -115,3 +115,11 @@ if(QPUTER_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# ------------------------------------------------------------------------------
+# Examples: worked algorithms to copy from (also run by ctest when tests are built)
+# ------------------------------------------------------------------------------
+option(QPUTER_BUILD_EXAMPLES "Build the example algorithms in examples/" ${PROJECT_IS_TOP_LEVEL})
+if(QPUTER_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()

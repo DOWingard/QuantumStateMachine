@@ -3,6 +3,9 @@
 build/
 cmake-build-*/
 
+# Generated documentation
+docs/
+
 # Compiled objects
 *.o
 *.obj

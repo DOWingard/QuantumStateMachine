@@ -284,6 +284,10 @@ namespace
     // Below this many shots, thread start-up outweighs sampling from a CDF.
     constexpr std::size_t kParallelSampleShots = 4096;
 
+    // Largest state vector simulated one trajectory per thread: 2 MiB per register, so a
+    // register per hardware thread still fits a typical last-level cache.
+    constexpr std::size_t kShotParallelMaxAmplitudes = std::size_t{1} << 17;
+
     // Up to 2^16 outcomes (512 KiB) the CDF stays cache-resident and per-shot binary search
     // wins. Beyond that every probe misses cache, so draws are sorted and matched against
     // the CDF in one sequential sweep: O(S log S + 2^k) instead of O(S k) cache misses.
@@ -580,8 +584,12 @@ void QuantumStateMachine::prepare_state(const Eigen::VectorXcd& amplitudes)
         throw std::invalid_argument(std::format("{}: squared norm {:.17g} differs from 1 by more than {:.0e}",
                                                 ctx, normSq, kNormTolerance));
 
-    live = QuantumStateVector{amplitudes};
-    prepAmplitudes = std::get<QuantumStateVector>(live);
+    // The replay copy is allocated first, so a failed allocation leaves the machine unchanged;
+    // the live register is then overwritten in place rather than replaced, which would briefly
+    // hold the caller's amplitudes, the old register and a new one at once.
+    if (prepAmplitudes) detail::copyAmplitudes(amplitudes.data(), *prepAmplitudes);
+    else prepAmplitudes.emplace(amplitudes);
+    detail::copyAmplitudes(amplitudes.data(), std::get<QuantumStateVector>(live));
     clearCircuit();
 }
 
@@ -1046,11 +1054,11 @@ void QuantumStateMachine::runSampled(std::uint64_t base, std::vector<Outcome>& o
 void QuantumStateMachine::runTrajectories(std::uint64_t base, std::vector<Outcome>& outcomes) const
 {
     const std::size_t shots = outcomes.size();
-    // Tableaus (O(N) gates) and small state vectors leave the gate kernels serial, so
-    // parallelize across shots instead; large state vectors run shots in sequence and let
-    // every gate use all threads.
+    // Tableaus and cache-resident state vectors run one shot per thread with serial gates:
+    // independent trajectories need no per-gate fork/join and no shared cache lines. Large state
+    // vectors run shots in sequence and let every gate use all threads.
     [[maybe_unused]] const bool shotParallel =
-        (backend() == Backend::Stabilizer || bit(nQubits) < detail::kParallelThreshold) && shots > 1;
+        (backend() == Backend::Stabilizer || bit(nQubits) <= kShotParallelMaxAmplitudes) && shots > 1;
     std::exception_ptr failure;
 
     QPUTER_OMP(parallel if(shotParallel))

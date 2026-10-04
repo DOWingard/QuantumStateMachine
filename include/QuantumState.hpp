@@ -37,6 +37,15 @@ class QuantumStateVector
     // Copies amplitudes as given (not renormalized); size must be 2^n with 1 <= n <= kMaxQubits.
     explicit QuantumStateVector(const Eigen::VectorXcd& amplitudes);
 
+    // Construction and copies write the amplitudes in parallel with the same static partition as
+    // the readout kernels, so on multi-socket hosts each page is first touched, and therefore
+    // placed, on the NUMA node of the thread that later streams it.
+    QuantumStateVector(const QuantumStateVector& other);
+    QuantumStateVector& operator=(const QuantumStateVector& other);
+    QuantumStateVector(QuantumStateVector&&) noexcept = default;
+    QuantumStateVector& operator=(QuantumStateVector&&) noexcept = default;
+    ~QuantumStateVector() = default;
+
 
     size_t num_qubits() const { return n_qubits; }
 

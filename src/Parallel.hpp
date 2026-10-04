@@ -47,4 +47,16 @@ inline std::size_t maxThreads() noexcept
 #endif
 }
 
+// Iterations each thread should get at least: a smaller team for mid-sized loops means fewer
+// threads to fork and wait for at every barrier, which matters most when other processes
+// occupy some of the cores.
+inline constexpr std::size_t kThreadGrain = std::size_t{1} << 13;
+
+inline int teamSize(std::size_t iterations) noexcept
+{
+    const std::size_t wanted = iterations / kThreadGrain;
+    const std::size_t limit = maxThreads();
+    return static_cast<int>(wanted < 1 ? 1 : (wanted < limit ? wanted : limit));
+}
+
 } // namespace Qputer::detail

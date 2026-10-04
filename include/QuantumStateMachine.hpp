@@ -117,7 +117,7 @@ struct Operation
 // preparation.
 //
 // The register is a state vector (any operation, 16 * 2^N bytes) or a stabilizer tableau
-// (Clifford gates, measure and reset; O(N) per gate, O(N^2 / 64) per measurement, N^2 / 2
+// (Clifford gates, measure and reset; O(N / 64) per gate, O(N^2 / 64) per measurement, N^2 / 2
 // bytes). Backend::Auto takes the state vector up to kMaxQubits and the tableau above it;
 // either can be requested explicitly. Every readout and run() reports the same results on
 // both, and for a Clifford circuit the same seed gives the same outcomes on both: random

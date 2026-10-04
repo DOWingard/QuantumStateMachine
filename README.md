@@ -35,6 +35,7 @@ big.t(0);                                              // throws: T is not Cliff
 - [Conventions](#conventions)
 - [Architecture](#architecture)
 - [API overview](#api-overview)
+- [Writing your own algorithms](#writing-your-own-algorithms)
 - [Execution model](#execution-model)
 - [Stabilizer backend](#stabilizer-backend)
 - [Performance design](#performance-design)
@@ -57,8 +58,9 @@ tree under `build/<preset>/`.
 
 ```sh
 make                       # configure + build (Release by default)
-make test                  # build, then run the GoogleTest suite through ctest
+make test                  # build, then run the GoogleTest suite and the examples through ctest
 make run                   # build, then run the demo app (build/release/qputer)
+make examples              # build, then run the three example algorithms
 make BUILD_TYPE=Debug test # Debug build with AddressSanitizer + UBSan
 make clean                 # clean the current build tree
 make distclean             # rm -rf build/
@@ -74,6 +76,7 @@ cmake --preset release && cmake --build --preset release && ctest --preset relea
 |----------------------|--------------------|-----------------------------------------------------------|
 | `QPUTER_NATIVE`      | `ON`               | Adds `-march=native` (PUBLIC, so every TU agrees on Eigen alignment). |
 | `QPUTER_BUILD_TESTS` | top-level project  | Builds `qputer_tests`.                                    |
+| `QPUTER_BUILD_EXAMPLES` | top-level project | Builds the programs in `examples/` (registered with ctest when tests are built). |
 
 Every first-party target is built with `-Wall -Wextra -Wpedantic -Wconversion -Wshadow
 -Wnon-virtual-dtor -Wold-style-cast -Werror`. Debug builds also add
@@ -88,6 +91,7 @@ every kernel runs single-threaded.
 | `qputer_lib`    | static library | State vector, gate kernels, readout kernels, stabilizer tableau, state machine. |
 | `qputer`        | executable     | Demo: Bell pair, 5-qubit GHZ marginal, teleportation, 1000-qubit GHZ. |
 | `qputer_tests`  | executable     | GoogleTest suite (99 tests).                                |
+| `phase_estimation`, `variational`, `repetition_code` | executables | Example algorithms in `build/<preset>/examples/`; see [Writing your own algorithms](#writing-your-own-algorithms). |
 
 ### Demo output (`make run`)
 
@@ -172,7 +176,7 @@ operation to the backend that holds it.
 │ QuantumGate (static)     │ │ ReadoutKernels (detail)  │ │ StabilizerState          │
 │ include/QuantumGates.hpp │ │ src/ReadoutKernels.hpp   │ │ include/StabilizerState  │
 │ in-place unitary kernels │ │ |a_i|², marginals, ⟨P⟩,  │ │ .hpp                     │
-│ + DenseGate (prepared U) │ │ collapse, CDF search     │ │ 2N packed Pauli rows,    │
+│ + DenseGate (prepared U) │ │ collapse, CDF search     │ │ column-packed tableau,   │
 └────────┬─────────────────┘ └──────┬───────────────────┘ │ Clifford updates, Z      │
          │                          │                     │ measurement, outcome     │
 ┌────────▼──────────────────────────▼─────────────────┐   │ support, ⟨P⟩, → |ψ⟩      │
@@ -315,6 +319,38 @@ lowercase method names, which makes the circuit straightforward to serialize.
 
 ---
 
+## Writing your own algorithms
+
+An algorithm is a C++ function that appends operations to a `QuantumStateMachine&`. The
+programs in `examples/` are working templates. Each one checks its result against theory
+and exits nonzero on a mismatch, and ctest runs all of them.
+
+| Example                | Algorithm                                                            | Shows |
+|------------------------|----------------------------------------------------------------------|-------|
+| `phase_estimation.cpp` | Quantum phase estimation of any 2^M × 2^M unitary U                  | Subroutines as functions (inverse QFT), `controlled_unitary` with U^(2^k) by repeated squaring, `run(shots)`, comparison with the peak probability (sin πδ / (2^t sin(πδ/2^t)))² |
+| `variational.cpp`      | VQE for an n-qubit transverse-field Ising chain                      | A Hamiltonian as weighted Pauli strings, exact energies from `expectation`, parameter-shift gradients ∂E/∂θ = [E(θ+π/2) − E(θ−π/2)]/2, Adam, a check against exact diagonalization |
+| `repetition_code.cpp`  | Bit-flip repetition code memory, d = 7 and d = 500                   | Ancilla parity measurement, classical decoding of live outcomes, the same code on both backends (13 qubits on the state vector, 999 on the tableau) |
+
+**Patterns:**
+
+- **Subroutines** are functions that take the machine and a `QubitList`, so they compose by
+  calling each other. To invert one, write the gates in reverse order with negated angles.
+  The library does not build adjoints or controlled versions for you.
+- **Readout while developing.** `probabilities()`, `expectation()` and `state()` are exact
+  and do not collapse anything, which no hardware offers. Use them to debug, and for
+  variational objectives. Use `run(shots)` to see what hardware would report.
+- **Classical control.** A live `measure()` returns the outcome, so C++ can branch on it.
+  But `run()` replays the recorded circuit, and gates added inside a C++ branch are
+  recorded unconditionally. For logic that differs per shot, use `when(clbit)`, which
+  tests one bit. Decode more complex logic from the counts afterwards.
+- **Large Clifford circuits.** Outcomes that would need more than 64 classical bits can be
+  read live from `measure()`, as `repetition_code.cpp` does.
+
+**Adding one:** copy an example to `examples/<name>.cpp`, add `qputer_example(<name>)` to
+`examples/CMakeLists.txt`, then `make` and run `build/release/examples/<name>`.
+
+---
+
 ## Execution model
 
 **Eager execution.** Every operation goes through validate → apply to the live state →
@@ -332,9 +368,10 @@ measurement into a classical bit. `run` picks one of two strategies:
    Cost: one circuit pass + O(2^k) + O(S log 2^k).
 2. **Trajectories** (all other circuits): each shot is an independent stochastic run with
    real mid-circuit collapse and feed-forward.
-   Cost: S × circuit cost. For small registers (2^N < 2^14), shots run in parallel across
-   threads. For large registers, shots run one after another and each gate kernel uses
-   all threads.
+   Cost: S × circuit cost. Registers of up to 2^17 amplitudes (2 MiB, so one register
+   per thread still fits a typical last-level cache) run one shot per thread with serial
+   gates. Larger registers run shots one after another, outside any parallel region, and
+   each gate kernel uses the thread pool.
 
 `measure_all()` does one joint draw over all 2^N outcomes instead of N sequential
 single-qubit measurements. The two have the same distribution, but the joint draw takes
@@ -343,7 +380,7 @@ two passes over the state instead of 2N.
 On the stabilizer backend, both strategies work the same way. The sampled strategy runs
 the unitary part once, computes the joint outcome support of the measured qubits, and
 selects one outcome per shot. Trajectories always run in parallel across shots, because
-tableau gates cost only O(N).
+tableau gates cost only O(N/64).
 
 ---
 
@@ -362,11 +399,21 @@ bits (x_q, z_q):
 I = (0,0)   X = (1,0)   Z = (0,1)   Y = (1,1)
 ```
 
-Rows are packed 64 qubits per word. Memory is 2N × 2N bits = N²/2 bytes, which is 2 GiB
-at the 65 536-qubit cap. The tableau has no global phase.
+The tableau is stored **column-major**. For each qubit q, the x bits of all 2N generators
+form one bit column and the z bits another, packed 64 generators per word. Each column
+has two word-aligned halves: destabilizer i is bit i of the first ⌈N/64⌉ words, and
+stabilizer i is bit i of the second half. A generator and its destabilizer partner
+therefore share a bit position, and a mask over one half indexes the other directly.
+Columns are padded to whole 64-byte cache lines, stored 64-byte aligned, and get one
+extra line when their stride would be a multiple of 512 bytes, so that columns do not all
+map to the same cache sets. The signs form one more bit column. Memory is about
+2N × 2N bits ≈ N²/2 bytes, or 2 GiB at the 65 536-qubit cap. The tableau has no global
+phase.
 
-**Gates** conjugate every row, U P U†. Each update is a few bit operations on one or two
-columns. All right-hand sides use the values from before the update:
+**Gates** conjugate every generator, U P U†. Each rule below is a few bitwise operations,
+applied to 64 generators per word over one or two columns, so a gate costs O(N/64) word
+operations in loops the compiler vectorizes. All right-hand sides use the values from
+before the update:
 
 | Gate        | Row update                                              |
 |-------------|---------------------------------------------------------|
@@ -379,16 +426,33 @@ columns. All right-hand sides use the values from before the update:
 | `cz(a,b)`   | r ⊕= x_a·x_b·(z_a ⊕ z_b);  z_a ⊕= x_b;  z_b ⊕= x_a       |
 | `swap(a,b)` | swap columns a and b                                    |
 
-**Measuring Z_q** costs O(N²/64):
+**Measuring Z_q** costs at most O(N²/64):
 
 - If some stabilizer S_p anticommutes with Z_q (x_{p,q} = 1), the outcome is random.
-  Every other anticommuting row is multiplied by S_p, S_p moves into D_p, and S_p becomes
-  (−1)^m Z_q.
+  Every other anticommuting generator is multiplied by S_p, S_p moves into D_p, and S_p
+  becomes (−1)^m Z_q. The generators to update are x column q as a bit mask. The
+  multiplication visits only the columns where S_p is not the identity, and streams each
+  of them block by block. Cost: O(wt(S_p) · N/64).
 - Otherwise the outcome is certain. Z_q = ±∏ S_i over the i whose D_i anticommutes with
-  Z_q, and the sign of that product is the outcome.
+  Z_q (the first half of x column q), and the sign of that product is the outcome.
 
-Row products track the i-exponent Σ_q g(P_q, P'_q) mod 4 word-parallel. One popcount
-counts the XY, YZ, ZX pairs (+1) and another counts the XZ, YX, ZY pairs (−1).
+Products track the i-exponent Σ_q g(P_q, P'_q) mod 4 with bit-sliced arithmetic. For
+single-qubit Paulis (x₁, z₁)·(x₂, z₂), the pair anticommutes where
+a = x₁z₂ ⊕ z₁x₂, and among those g = −1 exactly where x₁ ⊕ z₁ ⊕ x₂ ⊕ z₂ ⊕ x₁z₂. A pair of
+words (lo, hi) holds a mod-4 counter per bit lane, updated as hi ⊕= (lo ⊕ [g = −1]) · a,
+lo ⊕= a.
+
+- When multiplying by the pivot, the lanes are the updated generators. New sign =
+  r_i ⊕ r_p ⊕ hi_i (lo is 0 because every updated generator commutes with the pivot).
+- For the certain-outcome product S_{i₁} S_{i₂} …, the running product's bits at qubit c
+  are the exclusive prefix XOR of the chosen generators' bits in column c. That is one
+  carry-less multiply (PCLMULQDQ) per word, or six shift-XORs without it. The sign is the
+  XOR of the chosen signs and bit 1 of Σ_c [popcount(lo_c) + 2·popcount(hi_c)].
+
+The column layout trades certain outcomes for gates. A product over a sparse set of
+generators has to read every column's word holding them, O(N · words) instead of the
+row-major O(|set| · N/64). On dense random states that makes a certain outcome up to ~3×
+slower than with rows, while gates are two to three orders of magnitude faster.
 
 **Joint outcome distribution** (`OutcomeSupport`). The Z outcomes over k qubits are uniform
 over an affine subspace
@@ -414,7 +478,9 @@ the support.
 
 **Expectation values** are exact. If a Pauli string P anticommutes with some S_i,
 ⟨P⟩ = ⟨P S_i⟩ = −⟨S_i P⟩ = −⟨P⟩, so ⟨P⟩ = 0. Otherwise ±P is in the stabilizer group
-(the product of the S_i whose D_i anticommute with P), and ⟨P⟩ is its sign.
+(the product of the S_i whose D_i anticommute with P), and ⟨P⟩ is its sign. Finding the
+generators that anticommute with a k-qubit P costs k column XORs, O(k·N/64): an X at
+qubit c meets z column c, and a Z meets x column c.
 
 **Conversion to amplitudes** (`to_state_vector`, `state_vector()`, N ≤ 25; O(N·2^N)) uses
 |ψ⟩⟨ψ| = ∏_i (I + S_i)/2. Applying the product to a basis state |b⟩ leaves ⟨ψ|b⟩ |ψ⟩:
@@ -440,7 +506,12 @@ state-vector machine with `prepare_state`.
 
 **Memory.** 16 · 2^N bytes. N = 25 → 512 MiB. `kMaxQubits` in
 `include/QuantumState.hpp` caps the state vector and sets where `Backend::Auto` switches to
-the tableau. Raise it to allow larger state vectors.
+the tableau. Raise it to allow larger state vectors. Construction and copies write the
+amplitudes in parallel with the same static partition as the readout kernels. On
+multi-socket hosts each page is therefore first touched, and placed, on the NUMA node of
+the thread that later streams it. `prepare_state` overwrites the live register in place,
+so it holds three 2^N vectors at its peak (the caller's, the live register, the replay
+copy) rather than four.
 
 **Gate kernels** (`src/QuantumGates.cpp`). A gate with k active (control + target) qubits
 acts independently on 2^(N−k) disjoint subspaces. Kernels enumerate those subspaces
@@ -449,9 +520,19 @@ directly:
 - A loop counter p ∈ [0, 2^(N−k)) gets zero bits inserted at the active positions to
   form each subspace base index, with control bits OR'd in. Only amplitudes the gate can
   change are touched.
-- Bits of p below the lowest active qubit pass through unchanged. Consecutive p values
-  therefore map to contiguous runs of amplitudes, which stream with unit stride (SIMD,
-  prefetch, `__restrict`) instead of computing one index per element.
+- Bits of p below the lowest active qubit pass through unchanged, so consecutive p
+  values map to contiguous runs of amplitudes. If the lowest g active qubits are
+  consecutive, consecutive runs are 2^g runs apart. That holds for as long as the p bits
+  from the next active qubit up stay fixed (a *window*). One index computation therefore
+  serves a whole window, and gates on low qubits (runs of 1, 2 or 4 amplitudes) no longer
+  pay an index computation per element.
+- With AVX2 + FMA (`-march=native` on a capable host), the streams use explicit
+  intrinsics on the interleaved layout, two amplitudes per 256-bit register. A complex
+  2×2 is m·x = addsub(Re m · x, Im m · swap(x)) with fused multiply-adds. When qubit 0 is
+  the target, each pair (a₂ᵣ, a₂ᵣ₊₁) fills one register and is transformed in place.
+  When qubit 0 is a phase qubit, the odd amplitude is scaled and blended. Other builds use
+  plain loops that the compiler vectorizes. The choice is made at compile time, so a binary
+  built with `QPUTER_NATIVE=OFF` for distribution always takes the plain loops.
 - Each gate shape has its own kernel:
 
   | Kernel    | Used for                    | Arithmetic                       |
@@ -468,6 +549,16 @@ directly:
   states never need it.
 - Multi-controlled gates (`mcx`, `mcz`, `mcphase`) cost O(2^N) however many qubits they
   involve. They are never decomposed into smaller gates.
+- At N ≥ 22 every full-state gate streams the vector through DRAM. The kernels run
+  within about 25% of the in-place read+write bandwidth floor, so above that size layout
+  changes cannot buy much.
+
+**Amplitude layout.** Amplitudes stay interleaved (`std::complex<double>`, the layout
+`data()` exposes). A split real/imaginary layout was measured against it. With explicit
+AVX2 on the interleaved layout, the split layout gained about 1.2× for complex 2×2 gates
+on cache-resident states, nothing at DRAM sizes, and lost on qubit 1 without extra
+shuffles. That did not justify changing the public layout. Strided gather/scatter loads
+are not used: every target is reached through contiguous runs or in-register pairs.
 
 **Dense gates** (`src/DenseGate.hpp`). Validating U costs O(8^M), and applying it costs
 O(2^(N+M)). `prepareDense` converts U once into row-major form plus per-basis-state
@@ -477,22 +568,51 @@ across thousands of shots never re-validate or re-lay-out U.
 
 **Readout kernels** (`src/ReadoutKernels.cpp`). Each is one O(2^N) pass:
 
-- **Marginals:** while 2^k ≤ 4096, per-block histograms stay cache-resident. Above that,
-  each outcome is summed independently (outcome-major order).
+- **Marginals:** while 2^k ≤ 2^16, per-block histograms stay cache-resident. A byte-wise
+  lookup table maps each amplitude index to its outcome, one load per 256 amplitudes for
+  the high bytes plus one per amplitude for the low byte, instead of one step per
+  measured qubit. Block histograms are merged histogram by histogram, so the merge
+  streams sequentially. Above 2^16 outcomes, each outcome is summed independently
+  (outcome-major order).
 - **Pauli expectation:** P = i^{#Y} X^x Z^z, so
 
   ```
   ⟨ψ|P|ψ⟩ = Re( i^{#Y} Σ_i conj(a_{i⊕x}) a_i (−1)^{popcount(i ∧ z)} )
   ```
 
-  One pass computes this. The library never builds a 2^N × 2^N matrix.
+  Terms i and i ⊕ x pair up. With w = conj(a_{k⊕x}) a_k and σ = (−1)^{popcount(x ∧ z)},
+  a pair contributes s(k)(w + σ w̄), which is 2 s(k) Re w or 2i s(k) Im w. The kernel
+  enumerates k with x's top bit clear, so every amplitude is read once. The library never
+  builds a 2^N × 2^N matrix.
 - **Sampling:** for ≤ 2^16 outcomes, each shot does a binary search on the CDF. For more
   outcomes, the S draws are sorted and matched against the CDF in a single sequential
   sweep: O(S log S + 2^k) instead of O(S · k) cache misses.
 
-**Parallelism threshold.** OpenMP regions only fork at ≥ 2^14 iterations
-(`kParallelThreshold`, `src/Parallel.hpp`). Below that, fork/join overhead exceeds the
-work. The parallel shot sampler also stays serial below 4096 shots.
+**Tableau kernels** (`src/StabilizerState.cpp`). Gates are vectorized word loops over one
+or two columns. A random-outcome collapse streams each non-identity pivot column in 8-word
+blocks, each a cache line holding 512 generators, accumulating the phase counters
+alongside. Measurement updates stay on one thread below 2^22 column-words (about 1 ms on
+one core). Smaller tableaus are cache-resident, and splitting them across cores costs
+more in fork/join and cache-to-cache traffic than it saves. Above that, threads split the
+columns and add their bit-sliced counters exactly.
+
+**Parallelism.** OpenMP regions only fork at ≥ 2^14 iterations (`kParallelThreshold`,
+`src/Parallel.hpp`). Below that, fork/join overhead exceeds the work. A gate's team gets
+one thread per 2^13 units of work, up to the OpenMP maximum (`teamSize`). A unit is one
+amplitude pair of a single-qubit gate. A dense m-target subspace counts as 4^m / 4 units,
+because its 2^m × 2^m mat-vec is compute-bound. Mid-sized streaming gates therefore fork
+fewer threads, and each barrier waits on fewer of them. That matters when
+other processes occupy some cores: a single descheduled team member stalls the whole
+region. The parallel shot sampler stays serial below 4096 shots. Bandwidth-bound kernels
+rarely gain from SMT siblings, so on a shared machine `OMP_NUM_THREADS` = physical cores is
+usually faster than the default of one thread per hardware thread.
+
+**Floating-point contraction.** The scalar tails of the AVX2 kernels call `std::fma` in the
+same order as the vector bodies. Every product left unfused is passed as an argument to an
+`fma`, so the compiler has nothing more to fuse. Implicit contraction (GCC's default in C++,
+Clang's within an expression) therefore cannot make the two paths round differently. It stays
+enabled everywhere else, because dense gates and readout have no hand-written vector path to
+match and switching it off roughly doubles the cost of the dense mat-vec.
 
 ---
 
@@ -508,6 +628,12 @@ OpenMP thread count**. For Clifford circuits it is also **the same on both backe
 - **Reductions:** floating-point reductions (norms, marginal weights, ⟨P⟩) use a fixed
   decomposition into 256 blocks determined only by the problem size. Partial sums are
   combined in block order, so the rounding is the same at 1 thread or 64.
+- **Gate kernels:** each amplitude's new value is computed by the same operation
+  sequence wherever a thread's slice begins or ends. Vector bodies and scalar tails
+  perform identical fused multiply-adds, so results are bitwise identical at any thread
+  count and team size.
+- **Tableau:** all updates are integer bit operations, and per-thread phase counters add
+  exactly, so tableau results never depend on threading.
 - **Rounding at the CDF tail:** draws that rounding pushes past the end of the CDF
   resolve to the last outcome with nonzero weight. A zero-probability outcome is never
   returned.
@@ -525,7 +651,7 @@ OpenMP thread count**. For Clifford circuits it is also **the same on both backe
 | Limit                         | Value       | Constant                                   |
 |-------------------------------|-------------|--------------------------------------------|
 | Qubits, state vector          | 1 … 25      | `kMaxQubits` (also the `Auto` cutoff)      |
-| Qubits, stabilizer tableau    | 1 … 65 536 (N²/2 bytes) | `kMaxStabilizerQubits`         |
+| Qubits, stabilizer tableau    | 1 … 65 536 (≈ N²/2 bytes) | `kMaxStabilizerQubits`       |
 | Readout vector length         | 2^k, k ≤ 25 | `kMaxQubits`                               |
 | Qubits per `sample` outcome   | ≤ 64        | width of `Outcome`                         |
 | Classical bits                | 0 … 64      | `QuantumStateMachine::kMaxClbits`          |
@@ -551,7 +677,8 @@ partially applied.
 
 ## Tests
 
-`make test` runs 99 GoogleTest cases. In Debug mode they run under ASan and UBSan.
+`make test` runs 99 GoogleTest cases plus the three examples (102 ctest entries). In Debug
+mode they all run under ASan and UBSan.
 
 | File                          | Covers                                                                 |
 |-------------------------------|------------------------------------------------------------------------|
@@ -582,24 +709,29 @@ worst-mismatching index.
 
 ```
 .
-├── CMakeLists.txt              Library, app, warning/sanitizer flags, Eigen + OpenMP
+├── CMakeLists.txt              Library, app, examples, warning/sanitizer flags, Eigen + OpenMP
 ├── CMakePresets.json           debug (ASan+UBSan) / release presets → build/<preset>/
-├── Makefile                    make {build,test,run,clean,distclean}, BUILD_TYPE=Release|Debug
+├── Makefile                    make {build,test,run,examples,clean,distclean}, BUILD_TYPE=Release|Debug
 ├── apps/
 │   └── main.cpp                Demo: Bell, GHZ marginal, teleportation, 1000-qubit GHZ
+├── examples/                   Self-checking algorithm templates, also run by ctest
+│   ├── CMakeLists.txt          qputer_example(<name>): executable + ctest entry
+│   ├── phase_estimation.cpp    QPE of an arbitrary unitary, inverse QFT subroutine
+│   ├── variational.cpp         VQE: Pauli-sum Hamiltonian, parameter shift, Adam, exact check
+│   └── repetition_code.cpp     Syndrome extraction + decoding on both backends
 ├── include/                    Public API
 │   ├── QuantumState.hpp        QuantumStateVector, kMaxQubits
 │   ├── QuantumGates.hpp        QuantumGate static kernels, Qubit/QubitList
 │   ├── StabilizerState.hpp     StabilizerState tableau, OutcomeSupport, kMaxStabilizerQubits
 │   └── QuantumStateMachine.hpp QuantumStateMachine, Backend, Rng, Operation, OpKind, Counts
 ├── src/                        Implementation (src/*.hpp are internal)
-│   ├── QuantumState.cpp        State vector construction + validation
-│   ├── QuantumGates.cpp        Subspace layout, streaming kernels, dense prepare/apply
+│   ├── QuantumState.cpp        State vector construction + validation, parallel first-touch init and copies
+│   ├── QuantumGates.cpp        Subspace layout + windowed runs, AVX2/scalar kernels, dense prepare/apply
 │   ├── DenseGate.hpp           Prepared dense-gate representation
 │   ├── ReadoutKernels.hpp/.cpp Probabilities, marginals, Pauli sums, collapse, CDF search
-│   ├── StabilizerState.cpp     Clifford row updates, measurement, outcome support, conversion
+│   ├── StabilizerState.cpp     Column-major Clifford updates, bit-sliced measurement, outcome support, conversion
 │   ├── QuantumStateMachine.cpp Backend dispatch, validation, execution, sampling, run()
-│   └── Parallel.hpp            QPUTER_OMP macro, thread helpers, kParallelThreshold
+│   └── Parallel.hpp            QPUTER_OMP macro, thread helpers, kParallelThreshold, teamSize
 └── tests/
     ├── CMakeLists.txt          qputer_tests + GoogleTest discovery
     ├── TestSupport.hpp         Reference operator, random states/unitaries, assertions

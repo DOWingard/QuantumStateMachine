@@ -1,4 +1,6 @@
 #include <QuantumGates.hpp>
+#include "DenseGate.hpp"
+#include "Parallel.hpp"
 
 #include <algorithm>
 #include <array>
@@ -15,12 +17,16 @@
 #include <vector>
 #include <Eigen/Dense>
 
+#if defined(__AVX2__) && defined(__FMA__)
+#include <immintrin.h>
+#endif
 
 
-#include "DenseGate.hpp"
-#include "Parallel.hpp"
 
-#define QPUTER_OMP_PARALLEL QPUTER_OMP(parallel if(count >= kParallelThreshold))
+
+
+// `work` is in single-qubit-pair units: the parallel cutoff and team size scale with it.
+#define QPUTER_OMP_PARALLEL(work) QPUTER_OMP(parallel if((work) >= kParallelThreshold) num_threads(detail::teamSize(work)))
 
 
 
@@ -43,7 +49,69 @@ namespace
                 a.real() * b.imag() + a.imag() * b.real()};
     }
 
-    inline cd rmul(double a, cd b) noexcept { return {a * b.real(), a * b.imag()}; }
+
+    // ---- Arithmetic shared by the vector kernels and their scalar tails ----
+    //
+    // Each helper evaluates exactly the per-lane operations of its AVX2 counterpart (same
+    // fused multiply-adds, same order), so an amplitude's result never depends on whether a
+    // thread slice boundary put it on the vector path or the scalar one.
+
+#if defined(__AVX2__) && defined(__FMA__)
+#define QPUTER_SIMD_AVX2 1
+    inline double fmadd(double a, double b, double c) noexcept { return std::fma(a, b, c); }
+#else
+    inline double fmadd(double a, double b, double c) noexcept { return a * b + c; }
+#endif
+
+    // x * (pr + i pi); vector form _mm256_fmaddsub_pd(x, pr, swap(x) * pi).
+    inline cd scale(cd x, double pr, double pi) noexcept
+    {
+        return {fmadd(x.real(), pr, -(x.imag() * pi)), fmadd(x.imag(), pr, x.real() * pi)};
+    }
+
+    // m0 x0 + m1 x1 for real m0, m1; vector form fmadd(m1, x1, m0 * x0).
+    inline cd combineReal(double m0, cd x0, double m1, cd x1) noexcept
+    {
+        return {fmadd(m1, x1.real(), m0 * x0.real()), fmadd(m1, x1.imag(), m0 * x0.imag())};
+    }
+
+    // m0 x0 + m1 x1 for complex m0, m1: the real parts of m scale x, the imaginary parts scale
+    // swap(x) = (im, re), and addsub folds the two; vector form in mix2 below.
+    inline cd combine(cd m0, cd x0, cd m1, cd x1) noexcept
+    {
+        const double tr = fmadd(m1.real(), x1.real(), m0.real() * x0.real());
+        const double ti = fmadd(m1.real(), x1.imag(), m0.real() * x0.imag());
+        const double ur = fmadd(m1.imag(), x1.imag(), m0.imag() * x0.imag());
+        const double ui = fmadd(m1.imag(), x1.real(), m0.imag() * x0.real());
+        return {tr - ur, ti + ui};
+    }
+
+#ifdef QPUTER_SIMD_AVX2
+    // Two complex amplitudes per register: [re0, im0, re1, im1].
+    inline __m256d load2(const cd* p) noexcept { return _mm256_loadu_pd(reinterpret_cast<const double*>(p)); }
+    inline void store2(cd* p, __m256d v) noexcept { _mm256_storeu_pd(reinterpret_cast<double*>(p), v); }
+    inline __m256d swapReIm(__m256d v) noexcept { return _mm256_permute_pd(v, 0b0101); }
+    inline __m256d lowHalf(__m256d v) noexcept { return _mm256_permute2f128_pd(v, v, 0x00); }  // [a0, a0]
+    inline __m256d highHalf(__m256d v) noexcept { return _mm256_permute2f128_pd(v, v, 0x11); } // [a1, a1]
+
+    inline __m256d scale2(__m256d x, __m256d pr, __m256d pi) noexcept
+    {
+        return _mm256_fmaddsub_pd(x, pr, _mm256_mul_pd(swapReIm(x), pi));
+    }
+
+    // Lane-wise m0 x0 + m1 x1 with (r, i) = real and imaginary parts of m, as in combine().
+    inline __m256d mix2(__m256d r0, __m256d i0, __m256d x0, __m256d r1, __m256d i1, __m256d x1) noexcept
+    {
+        const __m256d t = _mm256_fmadd_pd(r1, x1, _mm256_mul_pd(r0, x0));
+        const __m256d u = _mm256_fmadd_pd(i1, swapReIm(x1), _mm256_mul_pd(i0, swapReIm(x0)));
+        return _mm256_addsub_pd(t, u);
+    }
+
+    inline __m256d broadcastRe(cd a) noexcept { return _mm256_set1_pd(a.real()); }
+    inline __m256d broadcastIm(cd a) noexcept { return _mm256_set1_pd(a.imag()); }
+    inline __m256d perLaneRe(cd lo, cd hi) noexcept { return _mm256_setr_pd(lo.real(), lo.real(), hi.real(), hi.real()); }
+    inline __m256d perLaneIm(cd lo, cd hi) noexcept { return _mm256_setr_pd(lo.imag(), lo.imag(), hi.imag(), hi.imag()); }
+#endif
 
 
     // Index geometry of one gate application. Every gate touches disjoint subspaces
@@ -55,6 +123,9 @@ namespace
         Index loopCount = 0;                       // 2^(N - |active|)
         Index ctrlMask = 0;                        // OR'd into every base index
         Index runMask = 0;                         // 2^(lowest active qubit) - 1
+        Index windowMask = 0;                      // p bits that vary within one window, see visitRuns
+        Index runStride = 0;                       // amplitudes between consecutive runs of a window
+        int runShift = 0;                          // log2(runMask + 1)
         std::size_t nActive = 0;
         std::array<Index, kMaxQubits> lowMasks{};  // (1 << q) - 1 for active q, ascending
     };
@@ -102,6 +173,13 @@ namespace
 
         L.loopCount = Index{1} << (n - L.nActive);
         L.runMask = L.nActive != 0 ? L.lowMasks[0] : L.loopCount - 1;
+        L.runShift = std::countr_zero(L.runMask + 1);
+
+        // The lowest g active qubits are consecutive: runs step over all of them at once, and a
+        // window lasts until p reaches the next active qubit above that group.
+        const auto g = L.nActive != 0 ? static_cast<std::size_t>(std::countr_one(seen >> L.runShift)) : 0;
+        L.runStride = (L.runMask + 1) << g;
+        L.windowMask = g < L.nActive ? L.lowMasks[g] >> g : L.loopCount - 1;
         return L;
     }
 
@@ -117,17 +195,29 @@ namespace
     }
 
     // Bits of p below the lowest active qubit pass through insertZeros unchanged, so
-    // consecutive p within one aligned block of 2^q_min map to consecutive amplitude
-    // indices. body(base, len) therefore receives contiguous runs it can stream with
-    // unit stride (SIMD + prefetch) instead of recomputing an index per element.
+    // consecutive p within one aligned block of 2^q_min map to a contiguous run of
+    // amplitudes. If the lowest g active qubits are consecutive, then while the p bits from the
+    // next active qubit up stay fixed (a window), consecutive runs are 2^g runs apart, so one
+    // insertZeros serves the whole window: body(base, len, count) receives `count` runs of `len`
+    // amplitudes starting at base + L.runStride * r. Only a thread slice's first and last run
+    // can be partial (count 1).
     template <class Body>
     inline void visitRuns(const Layout& L, Index begin, Index end, Body&& body)
     {
+        const Index run = L.runMask + 1;
         for (Index p = begin; p < end;)
         {
-            const Index stop = std::min(end, (p | L.runMask) + 1);
-            body(insertZeros(p, L) | L.ctrlMask, stop - p);
-            p = stop;
+            const Index base = insertZeros(p, L) | L.ctrlMask;
+            if ((p & L.runMask) != 0 || end - p < run)
+            {
+                const Index stop = std::min(end, (p | L.runMask) + 1);
+                body(base, stop - p, Index{1});
+                p = stop;
+                continue;
+            }
+            const Index count = (std::min(end, (p | L.windowMask) + 1) - p) >> L.runShift;
+            body(base, run, count);
+            p += count << L.runShift;
         }
     }
 
@@ -135,11 +225,18 @@ namespace
     void forEachRun(const Layout& L, Body&& body)
     {
         const Index count = L.loopCount;
-        QPUTER_OMP_PARALLEL
+        QPUTER_OMP_PARALLEL(count)
         {
             const auto [begin, end] = threadSlice(count);
             visitRuns(L, begin, end, body);
         }
+    }
+
+    // f(base) for each of `count` runs `stride` amplitudes apart.
+    template <class F>
+    inline void eachRun(Index base, Index count, Index stride, F&& f)
+    {
+        for (Index r = 0; r < count; ++r, base += stride) f(base);
     }
 
 
@@ -158,31 +255,136 @@ namespace
 
     inline void streamScale(cd* __restrict x, Index len, cd ph) noexcept
     {
-        for (Index j = 0; j < len; ++j) x[j] = cmul(x[j], ph);
+        Index j = 0;
+#ifdef QPUTER_SIMD_AVX2
+        const __m256d pr = broadcastRe(ph), pi = broadcastIm(ph);
+        for (; j + 2 <= len; j += 2) store2(x + j, scale2(load2(x + j), pr, pi));
+#endif
+        for (; j < len; ++j) x[j] = scale(x[j], ph.real(), ph.imag());
     }
 
     inline void streamReal2(cd* __restrict lo, cd* __restrict hi, Index len,
                             double m00, double m01, double m10, double m11) noexcept
     {
-        for (Index j = 0; j < len; ++j)
+        Index j = 0;
+#ifdef QPUTER_SIMD_AVX2
+        const __m256d a = _mm256_set1_pd(m00), b = _mm256_set1_pd(m01);
+        const __m256d c = _mm256_set1_pd(m10), d = _mm256_set1_pd(m11);
+        for (; j + 2 <= len; j += 2)
+        {
+            const __m256d x0 = load2(lo + j), x1 = load2(hi + j);
+            store2(lo + j, _mm256_fmadd_pd(b, x1, _mm256_mul_pd(a, x0)));
+            store2(hi + j, _mm256_fmadd_pd(d, x1, _mm256_mul_pd(c, x0)));
+        }
+#endif
+        for (; j < len; ++j)
         {
             const cd a0 = lo[j];
             const cd a1 = hi[j];
-            lo[j] = rmul(m00, a0) + rmul(m01, a1);
-            hi[j] = rmul(m10, a0) + rmul(m11, a1);
+            lo[j] = combineReal(m00, a0, m01, a1);
+            hi[j] = combineReal(m10, a0, m11, a1);
         }
     }
 
     inline void stream2(cd* __restrict lo, cd* __restrict hi, Index len,
                         cd m00, cd m01, cd m10, cd m11) noexcept
     {
-        for (Index j = 0; j < len; ++j)
+        Index j = 0;
+#ifdef QPUTER_SIMD_AVX2
+        const __m256d r00 = broadcastRe(m00), i00 = broadcastIm(m00), r01 = broadcastRe(m01), i01 = broadcastIm(m01);
+        const __m256d r10 = broadcastRe(m10), i10 = broadcastIm(m10), r11 = broadcastRe(m11), i11 = broadcastIm(m11);
+        for (; j + 2 <= len; j += 2)
+        {
+            const __m256d x0 = load2(lo + j), x1 = load2(hi + j);
+            store2(lo + j, mix2(r00, i00, x0, r01, i01, x1));
+            store2(hi + j, mix2(r10, i10, x0, r11, i11, x1));
+        }
+#endif
+        for (; j < len; ++j)
         {
             const cd a0 = lo[j];
             const cd a1 = hi[j];
-            lo[j] = cmul(m00, a0) + cmul(m01, a1);
-            hi[j] = cmul(m10, a0) + cmul(m11, a1);
+            lo[j] = combine(m00, a0, m01, a1);
+            hi[j] = combine(m10, a0, m11, a1);
         }
+    }
+
+
+    // ---- Pair streams: qubit 0 is the lowest active qubit, so runs have length 1 and each
+    // run's pair (a[s r], a[s r + 1]) is adjacent; one pair fills one vector. s = stride. ----
+
+    inline void pairsSwap(cd* a, Index count, Index s) noexcept
+    {
+        for (Index r = 0; r < count; ++r) std::swap(a[s * r], a[s * r + 1]);
+    }
+
+    // diag(d0, d1) on each pair; d1 alone (d0 = 1, exact) when only the odd amplitude changes.
+    inline void pairsDiag(cd* a, Index count, Index s, cd d0, cd d1) noexcept
+    {
+#ifdef QPUTER_SIMD_AVX2
+        const __m256d pr = perLaneRe(d0, d1), pi = perLaneIm(d0, d1);
+        for (Index r = 0; r < count; ++r) store2(a + s * r, scale2(load2(a + s * r), pr, pi));
+#else
+        for (Index r = 0; r < count; ++r)
+        {
+            a[s * r] = scale(a[s * r], d0.real(), d0.imag());
+            a[s * r + 1] = scale(a[s * r + 1], d1.real(), d1.imag());
+        }
+#endif
+    }
+
+    // Scales the odd amplitude of each pair by ph, leaving the even one bit-exact.
+    inline void pairsScaleOdd(cd* a, Index count, Index s, cd ph) noexcept
+    {
+#ifdef QPUTER_SIMD_AVX2
+        const __m256d pr = broadcastRe(ph), pi = broadcastIm(ph);
+        for (Index r = 0; r < count; ++r)
+        {
+            const __m256d v = load2(a + s * r);
+            store2(a + s * r, _mm256_blend_pd(v, scale2(v, pr, pi), 0b1100));
+        }
+#else
+        for (Index r = 0; r < count; ++r) a[s * r + 1] = scale(a[s * r + 1], ph.real(), ph.imag());
+#endif
+    }
+
+    inline void pairsReal2(cd* a, Index count, Index s, double m00, double m01, double m10, double m11) noexcept
+    {
+#ifdef QPUTER_SIMD_AVX2
+        const __m256d m0 = _mm256_setr_pd(m00, m00, m10, m10), m1 = _mm256_setr_pd(m01, m01, m11, m11);
+        for (Index r = 0; r < count; ++r)
+        {
+            const __m256d v = load2(a + s * r);
+            store2(a + s * r, _mm256_fmadd_pd(m1, highHalf(v), _mm256_mul_pd(m0, lowHalf(v))));
+        }
+#else
+        for (Index r = 0; r < count; ++r)
+        {
+            const cd a0 = a[s * r], a1 = a[s * r + 1];
+            a[s * r] = combineReal(m00, a0, m01, a1);
+            a[s * r + 1] = combineReal(m10, a0, m11, a1);
+        }
+#endif
+    }
+
+    inline void pairs2(cd* a, Index count, Index s, cd m00, cd m01, cd m10, cd m11) noexcept
+    {
+#ifdef QPUTER_SIMD_AVX2
+        const __m256d r0 = perLaneRe(m00, m10), i0 = perLaneIm(m00, m10);
+        const __m256d r1 = perLaneRe(m01, m11), i1 = perLaneIm(m01, m11);
+        for (Index r = 0; r < count; ++r)
+        {
+            const __m256d v = load2(a + s * r);
+            store2(a + s * r, mix2(r0, i0, lowHalf(v), r1, i1, highHalf(v)));
+        }
+#else
+        for (Index r = 0; r < count; ++r)
+        {
+            const cd a0 = a[s * r], a1 = a[s * r + 1];
+            a[s * r] = combine(m00, a0, m01, a1);
+            a[s * r + 1] = combine(m10, a0, m11, a1);
+        }
+#endif
     }
 
 
@@ -191,38 +393,56 @@ namespace
     // Pauli X on target within the control subspace: pure permutation, no FLOPs.
     void kernelX(cd* a, const Layout& L, Index tbit)
     {
-        forEachRun(L, [=](Index base, Index len) { streamSwap(a + base, a + (base | tbit), len); });
+        forEachRun(L, [=, s = L.runStride](Index base, Index len, Index count)
+        {
+            if (tbit == 1) return pairsSwap(a + base, count, s);
+            eachRun(base, count, s, [=](Index b) { streamSwap(a + b, a + (b | tbit), len); });
+        });
     }
 
     // Exchange |..1_a..0_b..> <-> |..0_a..1_b..>; the |00>, |11> amplitudes are untouched.
     void kernelSwap(cd* a, const Layout& L, Index abit, Index bbit)
     {
-        forEachRun(L, [=](Index base, Index len) { streamSwap(a + (base | abit), a + (base | bbit), len); });
+        forEachRun(L, [=, s = L.runStride](Index base, Index len, Index count)
+        {
+            eachRun(base, count, s, [=](Index b) { streamSwap(a + (b | abit), a + (b | bbit), len); });
+        });
     }
 
     // Multiply by `ph` where every bit of ctrlMask is set: diag(1,...,1,ph) on the
     // active qubits. Touches 2^(N-k) of 2^N amplitudes.
     void kernelPhase(cd* a, const Layout& L, cd ph)
     {
-        forEachRun(L, [=](Index base, Index len) { streamScale(a + base, len, ph); });
+        // With qubit 0 active, each run is the odd amplitude of an adjacent pair.
+        const bool oddRuns = L.nActive != 0 && L.lowMasks[0] == 0;
+        forEachRun(L, [=, s = L.runStride](Index base, Index len, Index count)
+        {
+            if (oddRuns) return pairsScaleOdd(a + base - 1, count, s, ph);
+            eachRun(base, count, s, [=](Index b) { streamScale(a + b, len, ph); });
+        });
     }
 
     // diag(d0, d1) on target.
     void kernelDiag(cd* a, const Layout& L, Index tbit, cd d0, cd d1)
     {
-        forEachRun(L, [=](Index base, Index len)
+        forEachRun(L, [=, s = L.runStride](Index base, Index len, Index count)
         {
-            streamScale(a + base, len, d0);
-            streamScale(a + (base | tbit), len, d1);
+            if (tbit == 1) return pairsDiag(a + base, count, s, d0, d1);
+            eachRun(base, count, s, [=](Index b)
+            {
+                streamScale(a + b, len, d0);
+                streamScale(a + (b | tbit), len, d1);
+            });
         });
     }
 
     // Real 2x2 (H, RY): half the multiplies of the complex kernel.
     void kernelReal2(cd* a, const Layout& L, Index tbit, double m00, double m01, double m10, double m11)
     {
-        forEachRun(L, [=](Index base, Index len)
+        forEachRun(L, [=, s = L.runStride](Index base, Index len, Index count)
         {
-            streamReal2(a + base, a + (base | tbit), len, m00, m01, m10, m11);
+            if (tbit == 1) return pairsReal2(a + base, count, s, m00, m01, m10, m11);
+            eachRun(base, count, s, [=](Index b) { streamReal2(a + b, a + (b | tbit), len, m00, m01, m10, m11); });
         });
     }
 
@@ -230,9 +450,10 @@ namespace
     void kernel2(cd* a, const Layout& L, Index tbit, const std::array<cd, 4>& m)
     {
         const cd m00 = m[0], m01 = m[1], m10 = m[2], m11 = m[3];
-        forEachRun(L, [=](Index base, Index len)
+        forEachRun(L, [=, s = L.runStride](Index base, Index len, Index count)
         {
-            stream2(a + base, a + (base | tbit), len, m00, m01, m10, m11);
+            if (tbit == 1) return pairs2(a + base, count, s, m00, m01, m10, m11);
+            eachRun(base, count, s, [=](Index b) { stream2(a + b, a + (b | tbit), len, m00, m01, m10, m11); });
         });
     }
 
@@ -247,27 +468,33 @@ namespace
         const std::size_t dim = kDim != 0 ? kDim : offsets.size();
         const Index* off = offsets.data();
         const cd* u = U.data();
+        // A subspace costs dim^2 complex multiply-adds against a pair's 4, so this compute-bound
+        // kernel parallelizes at fewer subspaces and with more threads than the streaming ones.
+        const Index work = count * dim * dim / 4;
 
-        QPUTER_OMP_PARALLEL
+        QPUTER_OMP_PARALLEL(work)
         {
             std::conditional_t<kDim != 0, std::array<cd, kDim>, std::vector<cd>> in{};
             if constexpr (kDim == 0) in.resize(dim);
 
             const auto [begin, end] = threadSlice(count);
-            visitRuns(L, begin, end, [&](Index base, Index len)
+            visitRuns(L, begin, end, [&](Index base, Index len, Index runs)
             {
-                for (Index j = 0; j < len; ++j)
+                eachRun(base, runs, L.runStride, [&](Index b)
                 {
-                    cd* sub = a + base + j;
-                    for (std::size_t c = 0; c < dim; ++c) in[c] = sub[off[c]];
-                    for (std::size_t r = 0; r < dim; ++r)
+                    for (Index j = 0; j < len; ++j)
                     {
-                        const cd* row = u + r * dim;
-                        cd acc{0.0, 0.0};
-                        for (std::size_t c = 0; c < dim; ++c) acc += cmul(row[c], in[c]);
-                        sub[off[r]] = acc;
+                        cd* sub = a + b + j;
+                        for (std::size_t c = 0; c < dim; ++c) in[c] = sub[off[c]];
+                        for (std::size_t r = 0; r < dim; ++r)
+                        {
+                            const cd* row = u + r * dim;
+                            cd acc{0.0, 0.0};
+                            for (std::size_t c = 0; c < dim; ++c) acc += cmul(row[c], in[c]);
+                            sub[off[r]] = acc;
+                        }
                     }
-                }
+                });
             });
         }
     }
