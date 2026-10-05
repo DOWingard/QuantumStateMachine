@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noether-interop"
+version = "0.1.0"
+description = "Run Qiskit, Cirq and Stim circuits on the Qputer quantum state machine through the noether CLI"
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+qiskit = ["qiskit>=1.3"]
+cirq = ["cirq-core>=1.3"]
+stim = ["stim>=1.13"]
+test = ["pytest", "qiskit>=1.3", "qiskit-aer", "cirq-core>=1.3", "stim>=1.13", "scipy"]
+
+[tool.setuptools]
+packages = ["noether_interop"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

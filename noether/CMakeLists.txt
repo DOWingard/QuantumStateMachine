@@ -26,6 +26,19 @@ add_custom_command(
     DEPENDS ${QSM_SKILL_DEPS} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed.cmake
     COMMENT "Embedding the agent skills")
 
+# OpenQASM include files for the circuit importer.
+set(NOETHER_QASM_INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/interop/include)
+set(NOETHER_QASM_INC_FILES qelib1.inc stdgates.inc)
+list(TRANSFORM NOETHER_QASM_INC_FILES PREPEND "${NOETHER_QASM_INC_DIR}/" OUTPUT_VARIABLE NOETHER_QASM_INC_DEPS)
+string(JOIN "," NOETHER_QASM_INC_LIST qelib1.inc stdgates.inc)
+add_custom_command(
+    OUTPUT ${NOETHER_GEN_DIR}/EmbeddedQasm.cpp
+    COMMAND ${CMAKE_COMMAND} -DOUT=${NOETHER_GEN_DIR}/EmbeddedQasm.cpp -DFUNC=embeddedQasmIncludes
+            -DROOT=${NOETHER_QASM_INC_DIR} -DFILES=${NOETHER_QASM_INC_LIST}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed.cmake
+    DEPENDS ${NOETHER_QASM_INC_DEPS} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed.cmake
+    COMMENT "Embedding the OpenQASM include files")
+
 add_library(noether_lib STATIC
     src/Source.cpp src/Json.cpp src/Diagnostics.cpp src/Lexer.cpp src/Parser.cpp
     src/Values.cpp src/Compiler.cpp src/Eval.cpp src/Backend.cpp src/Lowering.cpp
@@ -36,8 +49,15 @@ add_library(noether_lib STATIC
 target_include_directories(noether_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(noether_lib PUBLIC qputer_lib PRIVATE qputer_build_flags)
 
+# Circuit importers (OpenQASM 2/3, Stim, noether.circuit/1 JSON) and the commands that run them.
+add_library(noether_interop STATIC
+    src/interop/Lowering.cpp src/interop/CircuitJson.cpp src/interop/Run.cpp src/interop/Stim.cpp
+    src/interop/Qasm.cpp src/interop/Import.cpp src/interop/ImportCli.cpp
+    ${NOETHER_GEN_DIR}/EmbeddedQasm.cpp)
+target_link_libraries(noether_interop PUBLIC noether_lib PRIVATE qputer_build_flags)
+
 add_executable(noether apps/main.cpp)
-target_link_libraries(noether PRIVATE noether_lib qputer_build_flags)
+target_link_libraries(noether PRIVATE noether_interop qputer_build_flags)
 
 if(QPUTER_BUILD_TESTS)
     add_subdirectory(tests)

@@ -1,4 +1,4 @@
-#include "Cli.hpp"
+#include "interop/ImportCli.hpp"
 
 #include <iostream>
 #include <string>
@@ -7,5 +7,5 @@
 int main(int argc, char** argv)
 {
     std::vector<std::string> args(argv + 1, argv + argc);
-    return Noether::runCli(args, std::cout, std::cerr);
+    return Noether::Interop::runCli(args, std::cout, std::cerr);
 }

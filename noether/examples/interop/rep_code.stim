@@ -1,0 +1,23 @@
+# Distance-3 bit-flip repetition code: data qubits 0 2 4, ancillas 1 3, three rounds of X errors at
+# p = 0.05. Each round's detectors fire at 2p(1-p); observable 0 reads data qubit 4.
+R 0 1 2 3 4
+X_ERROR(0.05) 0 2 4
+CX 0 1 2 3
+CX 2 1 4 3
+MR 1 3
+DETECTOR(1, 0) rec[-2]
+DETECTOR(3, 0) rec[-1]
+REPEAT 2 {
+    TICK
+    X_ERROR(0.05) 0 2 4
+    CX 0 1 2 3
+    CX 2 1 4 3
+    MR 1 3
+    SHIFT_COORDS(0, 1)
+    DETECTOR(1, 0) rec[-2] rec[-4]
+    DETECTOR(3, 0) rec[-1] rec[-3]
+}
+M 0 2 4
+DETECTOR(1, 1) rec[-3] rec[-2] rec[-5]
+DETECTOR(3, 1) rec[-2] rec[-1] rec[-4]
+OBSERVABLE_INCLUDE(0) rec[-1]

@@ -35,6 +35,7 @@ files read alike.
 - [Execution](#execution)
 - [Diagnostics](#diagnostics)
 - [Tools](#tools)
+- [Importing circuits](#importing-circuits)
 - [Research loop](#research-loop)
 - [Agent skills](#agent-skills)
 - [Examples](#examples)
@@ -73,6 +74,8 @@ noether equiv a.ntr b.ntr      semantic equivalence (exact, up to global phase b
 noether opt f.ntr --minimize LABEL [--method nelder-mead|spsa|adam]
 noether grad f.ntr --of LABEL  parameter-shift gradient of a labelled print
 noether qasm export f.ntr      OpenQASM 3
+noether run f.qasm|f.stim|f.json    import an OpenQASM 2/3, Stim or circuit JSON file and run it
+noether check / import …       import only: diagnostics, or the circuit as JSON (below)
 noether eval / research …      autonomous research loop (below)
 noether explain CODE           long explanation of a diagnostic
 noether grammar | tokens       EBNF grammar; token and alias table
@@ -222,7 +225,9 @@ fix-its. `noether explain CODE` prints the long form, with a wrong and a right e
 | E6xxx | backends and resources: operations or readouts a backend cannot run, qubit and memory limits |
 | E7xxx | run time: assertion failed, timeout, numerical drift |
 | E8xxx | research specs: lock mismatch, forbidden statements or gates, basis, coupling, signature |
+| E9xxx | imports: unsupported or malformed input, unknown gates, constructs the state machine cannot represent, resource limits, unbound inputs, argument mismatches, malformed circuit JSON |
 | W0xxx | lints: `1/2π`, decimal angles near multiples of π/4, shadowing, unused bindings, readouts on one noisy trajectory, `f (x)` with a space |
+| W9xxx | imports: a global phase dropped, a statement with no simulated effect skipped, declared qubits never used |
 
 A comment `# noether: allow W0004` suppresses that lint in its file; `--deny warnings` turns lints
 into errors.
@@ -245,6 +250,117 @@ into errors.
 - **`qasm export`**: OpenQASM 3 for circuits without Noether-only constructs.
 - **`repl`**: accepted lines accumulate into one program, so bindings and the state carry
   over; a line with an error is reported and dropped, and `:source` prints the session.
+
+---
+
+## Importing circuits
+
+`noether run`, `check` and `import` also take circuits written for other tools. The format
+comes from the extension, or from `--format qasm|qasm2|qasm3|stim|circuit`:
+
+| Extension | Format |
+|---|---|
+| `.qasm` | OpenQASM 2 or 3, from the `OPENQASM` header (3 without one) |
+| `.qasm2`, `.qasm3` | OpenQASM 2 / 3 |
+| `.stim` | Stim |
+| `.json` | `noether.circuit/1`, written by the Python package from Qiskit and Cirq circuits |
+
+```sh
+noether run bell.qasm --shots 4000 --seed 1
+noether run teleport.qasm --param theta=1.1          # values for OpenQASM 3 `input`s
+noether run qft.qasm --emit statevector              # or probabilities: the state before the final measurements
+noether run rep_code.stim --shots 100000 --json      # with detector and observable rates
+noether import circuit.qasm > circuit.json           # the imported operations as noether.circuit/1
+```
+
+Every importer lowers to one flat list of state-machine operations. Gates map to native
+operations where one exists and to dense controlled unitaries otherwise (at most 10 targets);
+the lowering is exact, global phase aside, so `--emit statevector` agrees with the source
+framework's simulator to rounding error.
+
+**Conventions.** Qubit q is bit q of an amplitude index, so `amplitudes` and `probabilities`
+are little-endian (`"basisOrder": "q0-lsb"`, Qiskit's order). Counts are keyed by bit strings
+with classical bit 0 leftmost (`"bitOrder": "c0-left"`); the Python package re-keys them to each
+framework's convention. Classical bits are one 64-bit word, so a circuit has at most 64.
+
+**Backend.** `--backend auto` (the default) takes the stabilizer tableau when every operation is
+Clifford — rotations by multiples of π/2 and controlled phases by multiples of π count, rewritten
+exactly up to global phase — and the state vector (at most 25 qubits) otherwise. When every
+measurement is terminal the state is simulated once and the shots are sampled from it; mid-circuit
+measurement, feed-forward, reset and noise replay the circuit once per shot.
+
+**OpenQASM 2 and 3.** Supported: `qreg`/`creg` and `qubit`/`bit` registers, physical qubits
+`$n`, `const` and `input` (bound with `--param`), gate definitions, the modifiers `ctrl`,
+`negctrl`, `inv` and `pow`, every measure form, `reset`, `if`/`else` on bits and registers, `for`
+over constant ranges and sets, and `box`. `qelib1.inc` and `stdgates.inc` are built in; other
+includes resolve relative to the including file. `barrier` is skipped silently; `delay`,
+`duration`, `stretch`, pragmas and annotations are skipped with W9002. Subroutines (`def`),
+`while`, `switch`, run-time classical variables and arithmetic, `extern` and pulse-level
+calibration are rejected with E9001. A condition must reduce to one mask-and-value test of the
+classical bits — `c[0]`, `!c[0]`, `c == 5`, and `&&` of those — and `else` needs a single-bit
+condition.
+
+OpenQASM 3 defines `U(θ, φ, λ) = e^{iθ/2}·u3(θ, φ, λ)`, which matters under `ctrl @`. With that
+definition every `stdgates.inc` gate equals its definition exactly, except `CX`: defined as
+`ctrl @ U(π, 0, π)`, which is controlled-(iX); it runs as CNOT, as every producer intends.
+OpenQASM 2's `U` is `u3`, and `qelib1.inc` fixes its gates up to global phase.
+
+**Stim.** Every gate, noise channel and annotation of Stim 1.16 except `MPAD` and the heralded
+errors. Qubit ids are compacted in ascending order and labelled `q<id>`; the k-th measurement
+result is classical bit k. Cliffords stay Clifford, so Stim circuits run on the tableau at any
+size. Pauli noise becomes `pauli_channel` (Stim's term order); an `E`/`ELSE_CORRELATED_ERROR`
+chain becomes one channel with term probabilities qⱼ = pⱼ ∏ᵢ<ⱼ (1 − pᵢ) — a Pauli channel on
+up to 2 qubits, a Kraus channel on up to 10. `MPP` and `SPP` are a basis change, a CNOT chain
+and a Z measurement or S gate, undone afterwards. A noisy result (`M(p)`) is an X error before
+the measurement, which is exact only if the qubit is idle afterwards; otherwise E9003.
+`REPEAT` blocks are unrolled (at most 10⁷ instructions). Detectors and observables are
+reported as Stim reports them: the shots in which their parity differs from a noiseless
+reference sample. `sweep[k]` controls read 0, Stim's default, with W9002.
+
+**JSON output.** `run --json` prints `noether.import-run/1`: `format`, `sourceSha256`,
+`numQubits`, `numClbits`, `qubitLabels`, `clbitRegisters` (`name`, `offset`, `size`),
+`backend`, `backendReason`, `method` (`sampled`, `trajectories` or `state`), `seed`, then
+`shots`, `bitOrder` and `counts` (with `detectors` and `observables`, each `{index, fires|flips,
+rate}`), or `basisOrder` with `amplitudes` (`[re, im]` pairs) or `probabilities`; `timing`
+unless `--no-timing`. A run without `--seed` draws one below 2⁵³ and reports it.
+
+| Limit | Value | Code |
+|---|---|---|
+| state-vector qubits | 25 | E9004, before allocating |
+| tableau qubits | 65 536 | E9004 |
+| classical bits (measurement results) | 64 | E9004 |
+| dense gate targets | 10 | E9004 |
+| operations after inlining and unrolling | 10⁷ | E9004 |
+| integer `pow` repeated before a dense power | 4096 operations | — |
+
+### From Python
+
+`noether/python` is the `noether-interop` package. It converts Qiskit and Cirq circuits to
+`noether.circuit/1`, hands Stim circuits over as text, runs them through the CLI and returns
+results in the source framework's terms.
+
+```sh
+pip install './noether/python[qiskit,cirq,stim]'     # or: uv pip install …
+export NOETHER_BIN=build/release/noether/noether     # else `noether` on PATH
+```
+
+```python
+import noether_interop as ni
+
+ni.run(qiskit_circuit, shots=1000, seed=1)["counts"]    # {"1 01": 1000}: Qiskit's keys
+ni.run(cirq_circuit, shots=1000)["counts"]["m"]         # {value: n} per measurement key
+ni.run(stim_circuit, shots=1000)["records"]             # shots × measurements, plus "detectors"
+ni.statevector(circuit)                                 # little-endian amplitudes
+ni.to_circuit(circuit)                                  # the noether.circuit/1 document
+```
+
+Qiskit: standard gates, controlled gates with any control state, `UnitaryGate`, `Kraus` and Aer
+noise instructions, `if_test` on a bit or register, `for_loop`, `box`, `reset`, parameters bound
+with `params=`. Cirq: every gate with a unitary (exact maps for the common ones, dense matrices
+otherwise), controlled operations with 0/1 control values, measurement keys with invert masks,
+classical control on single-bit keys, and noise channels. What cannot be represented raises
+`ExportError` with an E9xxx code; the CLI's rejections raise `NoetherError` with its
+diagnostics.
 
 ---
 
@@ -318,6 +434,9 @@ Every example checks its own result with `assert`s, and the test suite runs all 
 | `noise_channels.ntr` | every channel against its analytic decay law |
 | `repetition_code.ntr` | a bit-flip code with a measuring `proc`, logical error rate 3p²(1−p) + p³ |
 | `research/` | the Toffoli T-depth task spec and a T-depth-3 candidate |
+| `interop/bell.qasm`, `interop/teleport.qasm` | OpenQASM 3 on the tableau, and teleportation with `input` and feed-forward |
+| `interop/rep_code.stim` | a noisy Stim repetition code with detectors and an observable |
+| `interop/qiskit_demo.py`, `interop/cirq_demo.py` | Qiskit and Cirq circuits through the Python package, checked against their own simulators |
 
 ```sh
 build/release/noether/noether run noether/examples/grover.ntr
@@ -344,6 +463,22 @@ the most significant bit.
 | `unit/test_diagnostics.cpp` | One fixture per code in `tests/diag/` triggers exactly that code at its span; fix-its remove their diagnostic; every catalog entry has a fixture and an explanation. |
 | `unit/test_tools.cpp` | Decomposition into 8 gate bases, equivalence, optimisers and gradients, estimates, QASM, draw/IR schemas, skills, REPL, exit codes. |
 | `unit/test_research.cpp` | Spec checks, metrics, verdicts, the ledger, the spec lock, coupling violations. |
+| `interop/test_interop_gates.cpp` | Every Stim unitary gate and alias, every Qiskit standard gate (as circuit JSON and as its OpenQASM 2/3 dumps) and a set of Cirq gates against reference unitaries in `interop/fixtures/gates.json`; built-in include files against their own definitions. |
+| `interop/test_interop_lowering.cpp` | Control, inverse and power against block, adjoint and root identities; emitted operations against the algebra; Pauli-product measurement and rotation; Clifford rewrites; operation validation. |
+| `interop/test_interop_formats.cpp` | Golden programs in `interop/programs/` with physical checks (Bell, GHZ, teleportation, QFT, Grover, a noisy repetition code); Stim and OpenQASM semantics; circuit JSON round trips; limits; the interop examples. |
+| `interop/test_interop_runner.cpp` | Backend choice, sampled against replayed shots, state readout, seeds, refusals before allocation. |
+| `interop/test_interop_fuzz.cpp` | Mutated OpenQASM, Stim and JSON sources end in a circuit or diagnostics, never a crash. |
+
+`interop/fixtures/generate.py` regenerates the reference unitaries (needs Qiskit, Cirq and Stim).
+The Python package has its own suite, which drives the CLI against Qiskit, Qiskit Aer, Cirq and
+Stim: random circuits to fidelity 1 − 10⁻¹⁰, OpenQASM routes against the JSON route, Stim noise
+term order, and sampled distributions, detector and observable rates within 4σ of the
+frameworks' own samplers:
+
+```sh
+pip install -e './noether/python[test]'
+NOETHER_BIN=build/release/noether/noether pytest noether/python
+```
 
 Golden outputs are rewritten with `NOETHER_UPDATE_GOLDENS=1` after a deliberate change;
 review the diff before keeping it.
@@ -367,8 +502,11 @@ noether/
 │   ├── Diagnostics       codes, catalog, rendering, fix-its
 │   ├── Estimate, Draw, Equiv, Optimize, Decompose, Qasm   tools
 │   ├── Research          specs, metrics, eval, workspaces
-│   └── Cli, Repl, Skills, StdLib, Json, Sha256, Source
+│   ├── Cli, Repl, Skills, StdLib, Json, Sha256, Source
+│   └── interop/          importers (noether_interop): Qasm, Stim, CircuitJson, the gate algebra
+│                         (Lowering), Run, ImportCli, and the built-in qelib1.inc / stdgates.inc
+├── python/               the noether-interop package (Qiskit, Cirq and Stim front ends) and its tests
 ├── std/                  standard library modules
-├── examples/             self-checking programs, research/ task
-└── tests/                unit/, programs/ (goldens), diag/ (fixtures)
+├── examples/             self-checking programs, research/ task, interop/ examples
+└── tests/                unit/, programs/ (goldens), diag/ (fixtures), interop/
 ```

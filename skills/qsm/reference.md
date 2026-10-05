@@ -205,6 +205,13 @@ Run `noether explain CODE` for a wrong and a right example.
 | E8005 | candidate signature mismatch |
 | E8006 | metric not estimable under readout shots |
 | E8007 | forbidden gate |
+| E9001 | unsupported or malformed import statement |
+| E9002 | unknown gate |
+| E9003 | not representable on the state machine |
+| E9004 | import resource limit |
+| E9005 | unbound parameter |
+| E9006 | argument mismatch |
+| E9007 | malformed circuit JSON |
 | W0001 | 1/2π ambiguity |
 | W0002 | float angle near a multiple of π/4 |
 | W0003 | shadowing |
@@ -212,6 +219,9 @@ Run `noether explain CODE` for a wrong and a right example.
 | W0005 | readout on a single noisy trajectory |
 | W0006 | large amplitude output |
 | W0009 | f (x) with a space |
+| W9001 | global phase dropped |
+| W9002 | ignored statement |
+| W9003 | declared qubits never used |
 
 ## Exit codes
 

@@ -1,0 +1,35 @@
+{
+  "backend": "statevector",
+  "backendReason": "ry is not Clifford",
+  "bitOrder": "c0-left",
+  "clbitRegisters": [
+    {
+      "name": "c",
+      "offset": 0,
+      "size": 3
+    }
+  ],
+  "counts": {
+    "000": 3674,
+    "001": 1295,
+    "010": 3691,
+    "011": 1365,
+    "100": 3652,
+    "101": 1365,
+    "110": 3645,
+    "111": 1313
+  },
+  "diagnostics": [],
+  "format": "qasm3",
+  "lang": "0.1",
+  "method": "trajectories",
+  "numClbits": 3,
+  "numQubits": 3,
+  "ok": true,
+  "qubitLabels": ["q[0]", "q[1]", "q[2]"],
+  "schema": "noether.import-run/1",
+  "seed": 1,
+  "shots": 20000,
+  "sourceSha256": "af12295027f655a95bf054e86687d6929a226d83959e4653e8bae3c21ae1bde6",
+  "version": "0.1.0"
+}

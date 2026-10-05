@@ -2,6 +2,7 @@
 # Build output
 build/
 cmake-build-*/
+.cache
 
 # Generated documentation
 docs/
@@ -21,3 +22,13 @@ compile_commands.json
 # Local secrets / agent context
 .env
 CONTEXT/
+
+.claude
+CLAUDE.md
+AGENTS.md
+graphify-out/
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/

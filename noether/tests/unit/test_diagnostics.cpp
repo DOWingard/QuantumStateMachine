@@ -1,5 +1,6 @@
-// Diagnostic fixtures: tests/diag/<CODE>.ntr triggers exactly that code at the declared position.
-// Header comments drive the harness:
+// Diagnostic fixtures: tests/diag/<CODE>.<ext> triggers exactly that code at the declared position.
+// <ext> is ntr, qasm, stim or circuit.json. Header comments (`#`, or `//` in OpenQASM) drive the
+// harness; a JSON fixture, which cannot hold comments, takes them from <CODE>.circuit.json.expect:
 //   # expect: E5001 4:1     required: the code and the 1-based line:col of one of its spans
 //   # command: run          optional subcommand (default check)
 //   # args: --timeout 0.001 optional extra arguments; {dir} is the fixture directory
@@ -29,7 +30,28 @@ struct Fixture
     int exit = 0;
 };
 
-const std::regex kFixtureName("[EW][0-9]{4}\\.ntr");
+const std::regex kFixtureName("[EW][0-9]{4}\\.(ntr|qasm|stim|circuit\\.json)");
+
+std::string codeOf(const std::filesystem::path& p)
+{
+    const std::string name = p.filename().string();
+    return name.substr(0, name.find('.'));
+}
+
+// Test names: the code for .ntr fixtures, the code and the extension otherwise.
+std::string testName(const std::filesystem::path& p)
+{
+    std::string name = p.filename().string();
+    if (name.ends_with(".ntr")) return codeOf(p);
+    std::ranges::replace(name, '.', '_');
+    return name;
+}
+
+std::string headerText(const std::filesystem::path& p)
+{
+    if (p.filename().string().ends_with(".json")) return readText(p.string() + ".expect");
+    return readText(p);
+}
 
 std::vector<std::filesystem::path> fixtureFiles()
 {
@@ -44,12 +66,13 @@ Fixture readFixture(const std::filesystem::path& p, const std::filesystem::path&
 {
     Fixture f;
     f.path = dir / p.filename();
-    std::istringstream in(readText(p));
+    const std::string headers = headerText(p);
+    std::istringstream in(headers);
     std::string line;
     for (int n = 0; n < 12 && std::getline(in, line); ++n)
     {
         std::smatch m;
-        if (!std::regex_match(line, m, std::regex(R"(#\s*(expect|command|args|exit):\s*(.*?)\s*)"))) continue;
+        if (!std::regex_match(line, m, std::regex(R"((?:#|//)\s*(expect|command|args|exit):\s*(.*?)\s*)"))) continue;
         const std::string key = m[1], value = m[2];
         if (key == "expect")
         {
@@ -73,7 +96,7 @@ Fixture readFixture(const std::filesystem::path& p, const std::filesystem::path&
         }
         else if (key == "exit") f.exit = std::stoi(value);
     }
-    if (!std::regex_search(readText(p), std::regex("#\\s*exit:"))) f.exit = f.code.starts_with("E") ? 1 : 0;
+    if (!std::regex_search(headers, std::regex("(#|//)\\s*exit:"))) f.exit = f.code.starts_with("E") ? 1 : 0;
     return f;
 }
 
@@ -114,7 +137,7 @@ TEST_P(Diag, TriggersExactlyItsCodeAtItsSpan)
     copyTree(kTestDir / "diag", tmp.path);
     const Fixture f = readFixture(GetParam(), tmp.path);
     ASSERT_FALSE(f.code.empty()) << "no `# expect:` header in " << GetParam();
-    ASSERT_EQ(f.code, GetParam().stem().string()) << "the file name must be the expected code";
+    ASSERT_EQ(f.code, codeOf(GetParam())) << "the file name must be the expected code";
 
     const Outcome o = runFixture(f);
     ASSERT_TRUE(o.json) << o.r.out << o.r.err;
@@ -149,12 +172,12 @@ TEST_P(Diag, FixItRemovesTheDiagnostic)
     EXPECT_FALSE(after.codes.contains(f.code)) << "after the fix:\n" << readText(f.path) << "\n" << after.r.out;
 }
 
-INSTANTIATE_TEST_SUITE_P(Fixtures, Diag, ::testing::ValuesIn(fixtureFiles()), [](const auto& p) { return p.param.stem().string(); });
+INSTANTIATE_TEST_SUITE_P(Fixtures, Diag, ::testing::ValuesIn(fixtureFiles()), [](const auto& p) { return testName(p.param); });
 
 TEST(DiagnosticCatalog, EveryCodeHasAFixtureAndAnExplanation)
 {
     std::set<std::string> fixtures;
-    for (const auto& p : fixtureFiles()) fixtures.insert(p.stem().string());
+    for (const auto& p : fixtureFiles()) fixtures.insert(codeOf(p));
     for (const CodeInfo& c : codeCatalog())
     {
         const std::string code(c.code);

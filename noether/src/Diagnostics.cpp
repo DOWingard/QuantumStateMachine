@@ -390,6 +390,40 @@ namespace
                  "Fidelity and amplitudes cannot be estimated from measurement shots."},
         CodeInfo{"E8007", "forbidden gate",
                  "The candidate uses a construct the spec forbids."},
+        CodeInfo{"E9001", "unsupported or malformed import statement",
+                 "An imported OpenQASM or Stim file uses a construct the importer does not support, or is not\n"
+                 "well formed. Unsupported in OpenQASM: opaque, def, extern, defcal and cal, while, switch,\n"
+                 "runtime classical variables and assignments, and loops whose bounds are not constants. In Stim:\n"
+                 "MPAD and the HERALDED_ instructions. The message names the construct; replace it with gates,\n"
+                 "`const` values and constant ranges."},
+        CodeInfo{"E9002", "unknown gate",
+                 "An OpenQASM gate is used before a `gate` definition or an include provides it, or a Stim\n"
+                 "instruction is unknown. OpenQASM 2 files usually need `include \"qelib1.inc\";` and OpenQASM 3\n"
+                 "files `include \"stdgates.inc\";`; both are built in."},
+        CodeInfo{"E9003", "not representable on the state machine",
+                 "The construct has no exact equivalent among the state machine's operations, whose classical\n"
+                 "feed-forward is a single {mask, value} test of the classical register and which has no\n"
+                 "classical noise. Examples: a measurement inside `if`; `if (c != 3)` on a register; an `else`\n"
+                 "after a multi-bit condition; a Stim result-flip M(p) on a qubit that is used again; a Cirq\n"
+                 "condition on a multi-qubit measurement key. Measure unconditionally and branch on single\n"
+                 "bits, or put the noise on the state (X_ERROR before M)."},
+        CodeInfo{"E9004", "import resource limit",
+                 "The circuit exceeds a hard limit: 64 classical bits (every Stim measurement result takes one,\n"
+                 "so a d=3 surface code over 3 rounds fits and d=5 over 5 rounds does not), 25 qubits for a\n"
+                 "circuit with a non-Clifford operation, 10 targets for a dense matrix or Kraus channel, or 10^7\n"
+                 "operations after inlining and unrolling. Clifford circuits run on the tableau at any size."},
+        CodeInfo{"E9005", "unbound parameter",
+                 "An OpenQASM 3 `input` has no value. Bind it on the command line with --param name=value (in\n"
+                 "Python, bind Qiskit and Cirq parameters before exporting)."},
+        CodeInfo{"E9006", "argument mismatch",
+                 "The operands do not fit the operation: registers of different sizes in one broadcast\n"
+                 "statement, an index out of range, one qubit used twice by a gate, the wrong number of gate\n"
+                 "parameters or qubits, or an odd number of targets for a two-qubit Stim gate."},
+        CodeInfo{"E9007", "malformed circuit JSON",
+                 "A noether.circuit/1 document is not valid JSON, declares another schema, contains an unknown\n"
+                 "key, or holds an operation the state machine would reject. The message gives the JSON path and\n"
+                 "the span points at the value. Unknown keys are errors so that an exporter and the reader\n"
+                 "cannot drift apart unnoticed."},
         CodeInfo{"W0001", "1/2π ambiguity",
                  "`/` binds tighter than juxtaposition, so 1/2π means (1/2)·π.\n"
                  "wrong:  Rz(1/2π)_0     (if 1/(2π) was meant)\n"
@@ -408,6 +442,19 @@ namespace
                  "A space before `(` makes a product, not a call.\n"
                  "wrong:  sin (x)\n"
                  "right:  sin(x)"},
+        CodeInfo{"W9001", "global phase dropped",
+                 "An uncontrolled global phase cannot be observed, so the importer drops it: a top-level OpenQASM\n"
+                 "gphase, Qiskit's circuit global_phase, a Cirq GlobalPhaseGate. Under a control the phase is\n"
+                 "kept, as a phase gate on the controls."},
+        CodeInfo{"W9002", "ignored statement",
+                 "A statement whose effect elsewhere the simulation does not model is skipped: delay, duration\n"
+                 "and stretch (idle time, which decoheres real hardware), pragmas and annotations, a Stim\n"
+                 "sweep[k] control (read as 0), or a condition that can never hold. Only the first occurrence\n"
+                 "of each kind is reported. Pure layout metadata (barrier, Stim TICK and coordinates) is\n"
+                 "skipped silently."},
+        CodeInfo{"W9003", "declared qubits never used",
+                 "Declared qubits that no operation touches stay in |0⟩ but still count towards the register\n"
+                 "size, and so towards the state vector's 16·2^N bytes."},
     };
 
 } // namespace

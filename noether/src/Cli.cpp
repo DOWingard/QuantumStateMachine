@@ -44,6 +44,11 @@ commands:
                                optimise params against a labelled print
   grad f.ntr --of LABEL        gradient of a labelled print (parameter shift)
   qasm export f.ntr            OpenQASM 3 text
+  run f.qasm|f.stim|f.json [--shots n] [--emit counts|probabilities|statevector] [--param name=value]
+                               import an OpenQASM 2/3, Stim or circuit JSON file and run it
+  check f.qasm|f.stim|f.json   import only; report diagnostics
+  import f.qasm|f.stim|f.json  print the imported circuit as noether.circuit/1 JSON
+                               (--format qasm|qasm2|qasm3|stim|circuit overrides the extension)
   eval [--dir D | --spec S --candidate C] [--record "description"]
                                score a candidate against a research task spec
   research init TAG --spec S [--from F] | status [--dir D] | report [--dir D] [--holdout F]

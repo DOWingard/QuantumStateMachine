@@ -1,0 +1,25 @@
+{
+  "backend": "statevector",
+  "backendReason": "--emit probabilities",
+  "basisOrder": "q0-lsb",
+  "clbitRegisters": [
+    {
+      "name": "c",
+      "offset": 0,
+      "size": 3
+    }
+  ],
+  "diagnostics": [],
+  "format": "qasm3",
+  "lang": "0.1",
+  "method": "state",
+  "numClbits": 3,
+  "numQubits": 3,
+  "ok": true,
+  "probabilities": [0.007812500000000002, 0.007812500000000026, 0.007812500000000038, 0.007812500000000031, 0.0078124999999999965, 0.945312500000003, 0.007812500000000043, 0.007812500000000026],
+  "qubitLabels": ["q[0]", "q[1]", "q[2]"],
+  "schema": "noether.import-run/1",
+  "seed": 1,
+  "sourceSha256": "fdc14f64a50aea2db1f2062eaad1df24bb6e3632712af4e54e2f015e6e00dc04",
+  "version": "0.1.0"
+}

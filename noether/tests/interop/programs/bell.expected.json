@@ -1,0 +1,29 @@
+{
+  "backend": "stabilizer",
+  "backendReason": "every operation is Clifford",
+  "bitOrder": "c0-left",
+  "clbitRegisters": [
+    {
+      "name": "c",
+      "offset": 0,
+      "size": 2
+    }
+  ],
+  "counts": {
+    "00": 2028,
+    "11": 1972
+  },
+  "diagnostics": [],
+  "format": "qasm3",
+  "lang": "0.1",
+  "method": "sampled",
+  "numClbits": 2,
+  "numQubits": 2,
+  "ok": true,
+  "qubitLabels": ["q[0]", "q[1]"],
+  "schema": "noether.import-run/1",
+  "seed": 1,
+  "shots": 4000,
+  "sourceSha256": "184dd326ce8be48a625a92bf6d0d37f9847801cdf6f1530f69b3ff7db76908cb",
+  "version": "0.1.0"
+}

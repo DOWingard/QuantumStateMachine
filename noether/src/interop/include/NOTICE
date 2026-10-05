@@ -1,0 +1,12 @@
+OpenQASM include files embedded in the noether binary by the circuit importer.
+
+stdgates.inc  The OpenQASM 3 standard gate library, as vendored by Qiskit 2.5.2 from
+              https://github.com/openqasm/openqasm at commit 4ca1d793833b24a1.
+              Copyright 2017-2024 OpenQASM Contributors. Apache License 2.0 (header kept).
+
+qelib1.inc    The OpenQASM 2 standard header with Qiskit's extensions, as shipped in
+              Qiskit 2.5.2 (qiskit/qasm/libs/qelib1.inc). Copyright IBM and Qiskit
+              contributors. Apache License 2.0.
+
+Both files are unmodified. The importer parses them as ordinary gate definitions; its native
+fast paths are tested against these definitions.

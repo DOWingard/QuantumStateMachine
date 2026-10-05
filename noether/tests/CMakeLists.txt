@@ -13,8 +13,13 @@ add_executable(noether_tests
     unit/test_diagnostics.cpp
     unit/test_tools.cpp
     unit/test_research.cpp
+    interop/test_interop_gates.cpp
+    interop/test_interop_lowering.cpp
+    interop/test_interop_formats.cpp
+    interop/test_interop_runner.cpp
+    interop/test_interop_fuzz.cpp
 )
-target_link_libraries(noether_tests PRIVATE noether_lib qputer_build_flags GTest::gtest_main)
+target_link_libraries(noether_tests PRIVATE noether_interop noether_lib qputer_build_flags GTest::gtest_main)
 target_compile_definitions(noether_tests PRIVATE
     NOETHER_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     NOETHER_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../examples"

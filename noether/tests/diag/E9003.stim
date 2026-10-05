@@ -1,0 +1,5 @@
+# expect: E9003 4:1
+# a noisy result is flipped after the run, which is exact only if its qubit stays idle; here it is
+# measured again
+M(0.1) 0
+M 0

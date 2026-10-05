@@ -7,6 +7,7 @@
 #include "Formatter.hpp"
 #include "Json.hpp"
 #include "Parser.hpp"
+#include "interop/ImportCli.hpp"
 
 #include <gtest/gtest.h>
 
@@ -27,6 +28,7 @@ namespace NoetherTest
 {
 
 using cd = std::complex<double>;
+using Noether::Json;
 
 inline const std::filesystem::path kTestDir = NOETHER_TEST_DIR;
 inline const std::filesystem::path kExamplesDir = NOETHER_EXAMPLES_DIR;
@@ -42,7 +44,7 @@ struct CliResult
 inline CliResult cli(const std::vector<std::string>& args)
 {
     std::ostringstream out, err;
-    const int code = Noether::runCli(args, out, err);
+    const int code = Noether::Interop::runCli(args, out, err);
     return {code, out.str(), err.str()};
 }
 
@@ -58,6 +60,51 @@ inline void writeText(const std::filesystem::path& p, std::string_view text)
 {
     std::filesystem::create_directories(p.parent_path());
     std::ofstream(p, std::ios::binary | std::ios::trunc) << text;
+}
+
+// Structural comparison; "file" values compare by file name because absolute paths differ by checkout.
+inline void compareJson(const Json& want, const Json& got, const std::string& path, std::vector<std::string>& diffs)
+{
+    if (diffs.size() > 20) return;
+    if (want.isNumber() && got.isNumber())
+    {
+        const double a = want.asDouble(), b = got.asDouble();
+        if (std::abs(a - b) > 1e-9 * std::max(1.0, std::abs(a))) diffs.push_back(std::format("{}: {} vs {}", path, a, b));
+        return;
+    }
+    if (want.isObject() && got.isObject())
+    {
+        for (const auto& [k, v] : want.asObject())
+        {
+            const Json* g = got.find(k);
+            if (!g)
+            {
+                diffs.push_back(path + "." + k + ": missing");
+                continue;
+            }
+            if (k == "file" && v.isString() && g->isString())
+            {
+                if (std::filesystem::path(v.asString()).filename() != std::filesystem::path(g->asString()).filename())
+                    diffs.push_back(path + ".file: " + v.asString() + " vs " + g->asString());
+                continue;
+            }
+            compareJson(v, *g, path + "." + k, diffs);
+        }
+        for (const auto& [k, v] : got.asObject())
+            if (!want.contains(k)) diffs.push_back(path + "." + k + ": unexpected");
+        return;
+    }
+    if (want.isArray() && got.isArray())
+    {
+        if (want.size() != got.size())
+        {
+            diffs.push_back(std::format("{}: {} items vs {}", path, want.size(), got.size()));
+            return;
+        }
+        for (std::size_t k = 0; k < want.size(); ++k) compareJson(want.asArray()[k], got.asArray()[k], std::format("{}[{}]", path, k), diffs);
+        return;
+    }
+    if (!(want == got)) diffs.push_back(path + ": " + want.dump(-1) + " vs " + got.dump(-1));
 }
 
 // A fresh directory under the system temp dir, removed when the object dies.

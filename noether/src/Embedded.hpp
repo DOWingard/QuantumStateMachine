@@ -8,7 +8,8 @@
 namespace Noether
 {
 
-// A text file compiled into the binary: the standard library and the agent skills.
+// A text file compiled into the binary: the standard library, the agent skills and the OpenQASM
+// include files.
 struct EmbeddedFile
 {
     std::string_view path;
@@ -17,5 +18,6 @@ struct EmbeddedFile
 
 std::span<const EmbeddedFile> embeddedStdLib(); // paths relative to std/, e.g. "qft.ntr"
 std::span<const EmbeddedFile> embeddedSkills(); // paths relative to skills/, e.g. "qsm/SKILL.md"
+std::span<const EmbeddedFile> embeddedQasmIncludes(); // "qelib1.inc", "stdgates.inc"
 
 } // namespace Noether

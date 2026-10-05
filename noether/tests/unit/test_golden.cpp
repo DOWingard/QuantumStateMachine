@@ -34,51 +34,6 @@ std::string testName(const std::filesystem::path& p)
     return s;
 }
 
-// Structural comparison; "file" values compare by file name because absolute paths differ by checkout.
-void compareJson(const Json& want, const Json& got, const std::string& path, std::vector<std::string>& diffs)
-{
-    if (diffs.size() > 20) return;
-    if (want.isNumber() && got.isNumber())
-    {
-        const double a = want.asDouble(), b = got.asDouble();
-        if (std::abs(a - b) > 1e-9 * std::max(1.0, std::abs(a))) diffs.push_back(std::format("{}: {} vs {}", path, a, b));
-        return;
-    }
-    if (want.isObject() && got.isObject())
-    {
-        for (const auto& [k, v] : want.asObject())
-        {
-            const Json* g = got.find(k);
-            if (!g)
-            {
-                diffs.push_back(path + "." + k + ": missing");
-                continue;
-            }
-            if (k == "file" && v.isString() && g->isString())
-            {
-                if (std::filesystem::path(v.asString()).filename() != std::filesystem::path(g->asString()).filename())
-                    diffs.push_back(path + ".file: " + v.asString() + " vs " + g->asString());
-                continue;
-            }
-            compareJson(v, *g, path + "." + k, diffs);
-        }
-        for (const auto& [k, v] : got.asObject())
-            if (!want.contains(k)) diffs.push_back(path + "." + k + ": unexpected");
-        return;
-    }
-    if (want.isArray() && got.isArray())
-    {
-        if (want.size() != got.size())
-        {
-            diffs.push_back(std::format("{}: {} items vs {}", path, want.size(), got.size()));
-            return;
-        }
-        for (std::size_t k = 0; k < want.size(); ++k) compareJson(want.asArray()[k], got.asArray()[k], std::format("{}[{}]", path, k), diffs);
-        return;
-    }
-    if (!(want == got)) diffs.push_back(path + ": " + want.dump(-1) + " vs " + got.dump(-1));
-}
-
 // Programs without a `seed` statement draw one per run; the harness pins it so the output is reproducible.
 CliResult runGolden(const std::filesystem::path& p)
 {
