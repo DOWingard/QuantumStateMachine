@@ -40,6 +40,15 @@ c ← measure_q
 counts ← run 10000
 ```
 
+Circuits written for other tools run on it too: the `noether` CLI imports OpenQASM 2/3 and
+Stim files, and a Python package hands over Qiskit, Cirq and Stim circuits (see
+[External support](#external-support)).
+
+```sh
+build/release/noether/noether run noether/examples/interop/bell.qasm --shots 4000       # OpenQASM 2 or 3
+build/release/noether/noether run noether/examples/interop/rep_code.stim --shots 100000 # Stim, with detector rates
+```
+
 ---
 
 ## Contents
@@ -56,6 +65,7 @@ counts ← run 10000
 - [Limits and error handling](#limits-and-error-handling)
 - [Tests](#tests)
 - [Noether](#noether)
+- [External support](#external-support)
 - [File reference](#file-reference)
 
 ---
@@ -107,7 +117,8 @@ every kernel runs single-threaded.
 | `qputer`        | executable     | Demo: Bell pair, 5-qubit GHZ marginal, teleportation, 1000-qubit GHZ. |
 | `qputer_tests`  | executable     | GoogleTest suite (131 tests).                               |
 | `noether_lib`, `noether` | static library, executable | The Noether compiler, executor and tools; the `noether` CLI (`build/<preset>/noether/noether`). |
-| `noether_tests` | executable     | Noether GoogleTest suite (253 test cases, many parameterised over programs and fixtures). |
+| `noether_interop` | static library | Importers for OpenQASM 2/3, Stim and circuit JSON, and the runner behind `noether run` on those files. |
+| `noether_tests` | executable     | Noether GoogleTest suite (344 test cases, many parameterised over programs and fixtures). |
 | `phase_estimation`, `variational`, `repetition_code` | executables | Example algorithms in `build/<preset>/examples/`; see [Writing your own algorithms](#writing-your-own-algorithms). |
 
 ### Demo output (`make run`)
@@ -700,9 +711,11 @@ partially applied.
 
 ## Tests
 
-`make test` runs 131 GoogleTest cases, the three examples and the 253 Noether test cases
-(387 ctest entries; `ctest -L noether` selects the Noether ones). In Debug mode they all run
-under ASan and UBSan.
+`make test` runs 131 GoogleTest cases, the three examples and the 344 Noether test cases
+(478 ctest entries; `ctest -L noether` selects the Noether ones, the importers included). In
+Debug mode they all run under ASan and UBSan. The Python package has its own pytest suite,
+which checks the importers against Qiskit, Qiskit Aer, Cirq and Stim (see
+[External support](#external-support)).
 
 | File                          | Covers                                                                 |
 |-------------------------------|------------------------------------------------------------------------|
@@ -745,13 +758,82 @@ build/release/noether/noether check f.ntr --json      # diagnostics with codes, 
 ```
 
 The CLI also draws circuits, estimates resources, checks equivalence, optimises parameters,
-exports OpenQASM 3 and runs an autonomous research loop against a task spec. The full
+exports OpenQASM 3, imports circuits from other tools (next section) and runs an autonomous
+research loop against a task spec. The full
 description, the examples and the test layout are in `noether/README.md`.
 
 `skills/` holds three skills for coding agents: `qsm` (writing and running Noether
 programs), `qsm-research` (the research loop) and `qsm-tune` (tuning the simulator for the
 host). They are embedded in the `noether` binary, and `noether skill --install DIR` writes
 them into any skills directory an agent reads.
+
+---
+
+## External support
+
+Circuits from other quantum toolkits run on the `QuantumStateMachine` without being rewritten.
+Files go through the `noether` CLI; in-memory circuits go through the `noether-interop` Python
+package, which converts them and calls the CLI.
+
+| Source | How | What is supported |
+|---|---|---|
+| OpenQASM 2 | `noether run f.qasm` | registers, `qelib1.inc` (built in), gate definitions, `measure`, `reset`, `if (c == n)` |
+| OpenQASM 3 | `noether run f.qasm` | the above with `stdgates.inc` (built in), `ctrl` / `negctrl` / `inv` / `pow`, `input` values from `--param`, `if` / `else`, constant `for` loops, `box`, physical qubits |
+| Stim | `noether run f.stim` | every gate, Pauli and correlated noise (`E` / `ELSE_CORRELATED_ERROR`), `MPP` / `SPP`, noisy measurement, `REPEAT`, detectors and observables |
+| Qiskit | `noether_interop.run(qc)` | standard and controlled gates (any control state), `UnitaryGate`, `Kraus` and Aer noise, `if_test`, `for_loop`, `box`, `reset`, bound parameters |
+| Cirq | `noether_interop.run(circuit)` | every gate with a unitary, controlled operations, measurement keys with invert masks, classical control on single-bit keys, noise channels |
+| circuit JSON | `noether run f.json` | `noether.circuit/1`: what the Python package writes and `noether import` prints |
+
+```sh
+cd noether/examples/interop
+noether run teleport.qasm --param theta=1.1 --shots 4000 --seed 1
+noether run bell.qasm --emit statevector         # amplitudes before the final measurements
+noether import bell.qasm > bell.json             # the imported operations, for inspection
+noether run bell.json --json                     # circuit JSON runs like any other format
+```
+
+```python
+import noether_interop as ni                     # pip install './noether/python[qiskit,cirq,stim]'
+
+ni.run(qiskit_circuit, shots=1000)["counts"]     # keyed like Qiskit's get_counts()
+ni.run(cirq_circuit, shots=1000)["counts"]["m"]  # per measurement key, like Cirq's histogram
+ni.run(stim_circuit, shots=1000)["detectors"]    # detector rates, as Stim reports them
+ni.statevector(circuit)                          # amplitudes, little-endian
+```
+
+The package finds the CLI through `NOETHER_BIN` or `PATH` and raises at once if neither has it.
+
+**Accuracy.** Every gate maps to an exact core operation or an exact dense unitary, so results
+differ from the source framework only by an unobservable global phase and rounding. The test
+suites check this: every Stim gate, every Qiskit standard gate and a set of Cirq gates against
+the framework's own unitary to 10⁻¹⁰; random circuits of up to 10 qubits at state fidelity
+≥ 1 − 10⁻¹⁰; and noisy Stim codes (repetition, rotated surface, color), Qiskit dynamic circuits
+and Cirq noise channels against Stim's samplers, Qiskit Aer and Cirq's density-matrix
+simulator, within 4σ at up to 10⁵ shots.
+
+**Backend.** A circuit whose operations are all Clifford (rotations by multiples of π/2
+included) runs on the stabilizer tableau at any size, so Stim circuits stay on it; anything else
+runs on the state vector. With only terminal measurements the state is simulated once and the
+shots are sampled from it.
+
+**Bit order.** Amplitudes are indexed with qubit q as bit q (Qiskit's order). Counts from the
+CLI are bit strings with classical bit 0 leftmost; the Python package re-keys them for each
+framework.
+
+| Limit | Value |
+|---|---|
+| classical bits, so Stim measurement results | 64 (one 64-bit word holds the register) |
+| qubits, non-Clifford circuit | 25 (state vector) |
+| qubits, Clifford circuit | 65 536 (tableau) |
+| targets of one dense gate | 10 |
+| operations after inlining and unrolling | 10⁷ |
+
+Past a limit, or on a construct the state machine cannot express — OpenQASM 3 subroutines,
+`while`, run-time classical arithmetic, a condition that is not one mask-and-value test, Stim
+`MPAD` and heralded errors, a noisy Stim measurement whose qubit is used again — the import
+stops with an E9xxx diagnostic before anything is allocated; `noether explain CODE` describes
+each code. The full reference (conventions, gate-phase rules for OpenQASM's `U` and `CX`, the
+JSON output schema) is the "Importing circuits" section of `noether/README.md`.
 
 ---
 
@@ -782,7 +864,8 @@ them into any skills directory an agent reads.
 │   ├── StabilizerState.cpp     Column-major Clifford updates, bit-sliced measurement, outcome support, conversion
 │   ├── QuantumStateMachine.cpp Backend dispatch, validation, execution, sampling, run()
 │   └── Parallel.hpp            QPUTER_OMP macro, thread helpers, kParallelThreshold, teamSize
-├── noether/                    Noether language, `noether` CLI, examples and tests
+├── noether/                    Noether language, `noether` CLI, circuit importers (src/interop/),
+│                               the noether-interop Python package (python/), examples and tests
 ├── skills/                     Agent skills: qsm, qsm-research, qsm-tune
 └── tests/
     ├── CMakeLists.txt          qputer_tests + GoogleTest discovery
