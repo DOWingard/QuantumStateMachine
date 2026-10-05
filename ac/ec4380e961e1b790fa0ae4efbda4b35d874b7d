@@ -1,0 +1,21 @@
+README.md
+  s_5f9af896a9aafa::t_4536659f14e044 43-47,50-51,68,120-121,714-718,761-762,772-787,789,793-807,813-833,835-839,867-868
+  s_5f9af896a9aafa::t_7c1e4c66e3b946 48-49,788,790-792,808,834
+  s_5f9af896a9aafa::t_4babf1fe17dce5 809-812
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "acec4380e961e1b790fa0ae4efbda4b35d874b7d",
+  "prompts": {},
+  "sessions": {
+    "s_5f9af896a9aafa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bbd90d9a-1983-400a-a80e-4e91e4348336",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Derek Wingard <derekwingard@gmail.com>"
+    }
+  }
+}
