@@ -1,0 +1,74 @@
+{
+  "asserts": [
+    {
+      "lhs": 0.7006292692220366,
+      "line": 12,
+      "passed": true,
+      "rhs": 0.7006292692220367,
+      "text": "⟨X_2⟩ ≈ sin(θ) cos(φ)",
+      "tol": 1e-09
+    },
+    {
+      "lhs": 0.509036960455127,
+      "line": 13,
+      "passed": true,
+      "rhs": 0.5090369604551271,
+      "text": "⟨Y_2⟩ ≈ sin(θ) sin(φ)",
+      "tol": 1e-09
+    },
+    {
+      "lhs": 0.5,
+      "line": 14,
+      "passed": true,
+      "rhs": 0.5000000000000001,
+      "text": "⟨Z_2⟩ ≈ cos(θ)",
+      "tol": 1e-09
+    }
+  ],
+  "backend": "statevector",
+  "backendReason": "a superposition is prepared",
+  "diagnostics": [],
+  "formatted": false,
+  "lang": "0.1",
+  "ok": true,
+  "params": {},
+  "prints": [
+    {
+      "label": null,
+      "line": 11,
+      "stderr": null,
+      "text": "⟨X_2⟩",
+      "value": 0.7006292692220366
+    },
+    {
+      "label": null,
+      "line": 11,
+      "stderr": null,
+      "text": "⟨Y_2⟩",
+      "value": 0.509036960455127
+    },
+    {
+      "label": null,
+      "line": 11,
+      "stderr": null,
+      "text": "⟨Z_2⟩",
+      "value": 0.5
+    }
+  ],
+  "resources": {
+    "clbits": 2,
+    "clifford": true,
+    "count2q": 2,
+    "depth": 5,
+    "depth2q": 2,
+    "ops": 8,
+    "peakBytes": 128,
+    "qubits": 3,
+    "tcount": 0
+  },
+  "runs": [],
+  "schema": "noether.run/1",
+  "seed": 7,
+  "sourceSha256": "cdff7a86bbb6c95ef206598fa9f64e22af21f7a19b327ef9e86909ebc1b63873",
+  "version": "0.1.0"
+}

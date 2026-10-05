@@ -22,6 +22,8 @@ add_executable(qputer_tests
     test_measurement.cpp
     test_stabilizer.cpp
     test_backend_comparison.cpp
+    test_channels.cpp
+    test_entropy.cpp
 )
 
 target_link_libraries(qputer_tests PRIVATE qputer_lib qputer_build_flags GTest::gtest_main)

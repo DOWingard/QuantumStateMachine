@@ -1,0 +1,14 @@
+noether 0.1
+qubits q[3]; bits c[2]; seed 7
+let θ = π/3, φ = π/5
+prepare (cos(θ/2)|0⟩ + e^{iφ} sin(θ/2)|1⟩) ⊗ |00⟩
+CNOT_{1→2} H_1  # Bell pair on (1,2): H acts first
+H_0 CNOT_{0→1}  # Bell-basis rotation: CNOT acts first
+c[0] ← measure Z_0
+c[1] ← measure Z_1
+if c[1]: X_2
+if c[0]: Z_2
+print ⟨X_2⟩, ⟨Y_2⟩, ⟨Z_2⟩
+assert ⟨X_2⟩ ≈ sin(θ) cos(φ)
+assert ⟨Y_2⟩ ≈ sin(θ) sin(φ)
+assert ⟨Z_2⟩ ≈ cos(θ)

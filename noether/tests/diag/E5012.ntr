@@ -1,0 +1,7 @@
+noether 0.1
+# expect: E5012 7:10
+## conditional measurement is not supported in v0.1
+qubits q[2]
+bits c[2]
+c[0] <- measure Z_0
+if c[0]: c[1] <- measure Z_1

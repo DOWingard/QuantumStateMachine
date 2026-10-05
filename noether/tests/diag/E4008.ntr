@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E4008 5:1
+## square root of an operator is defined only for X
+qubits q[1]
+sqrt Y_0

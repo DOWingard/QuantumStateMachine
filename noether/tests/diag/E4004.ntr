@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E4004 6:4
+## an if condition can test only measured bits, not a readout of the live state
+qubits q[2]
+H_0
+if \expval{Z_0} > 0: X_1

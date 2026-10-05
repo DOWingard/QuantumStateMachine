@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E8007 6:5
+# args: --spec {dir}/E8007.spec.ntr
+## the task forbids Toffoli; decompose it into Clifford+T
+def Algo_{q[3]}:
+    Toffoli_{q[0],q[1]->q[2]}

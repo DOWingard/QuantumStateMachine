@@ -1,0 +1,8 @@
+noether 0.1
+task "bell"
+qubits q[2]
+candidate def Algo_{q[2]}
+target state (|00> + |11>)/sqrt(2)
+gates {H, CNOT}
+require fidelity >= 0.5
+minimize count2q

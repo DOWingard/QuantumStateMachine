@@ -114,7 +114,7 @@ TEST(StateMachine, GenericAppendMatchesNamedMethods)
 
 TEST(StateMachine, OperationNamesRoundTrip)
 {
-    for (std::size_t k = 0; k <= static_cast<std::size_t>(OpKind::Reset); ++k)
+    for (std::size_t k = 0; k <= static_cast<std::size_t>(OpKind::Kraus); ++k)
     {
         const auto kind = static_cast<OpKind>(k);
         SCOPED_TRACE(std::string{Qputer::opName(kind)});
@@ -122,6 +122,8 @@ TEST(StateMachine, OperationNamesRoundTrip)
     }
     EXPECT_EQ(Qputer::opKindFromName("hadamard"), std::nullopt);
     EXPECT_EQ(Qputer::opName(OpKind::CNOT), "cnot");
+    EXPECT_EQ(Qputer::opName(OpKind::PauliChannel), "pauli_channel");
+    EXPECT_EQ(Qputer::opName(OpKind::Kraus), "kraus");
 }
 
 TEST(StateMachine, InvalidOperationsLeaveSystemUntouched)
@@ -139,7 +141,7 @@ TEST(StateMachine, InvalidOperationsLeaveSystemUntouched)
     Operation clbitOnGate = op(OpKind::X, {}, {0});
     clbitOnGate.clbit = 0;
     Operation conditionedMeasure = op(OpKind::Measure, {}, {0});
-    conditionedMeasure.condition = Qputer::Condition{0, true};
+    conditionedMeasure.condition = Qputer::Condition{0b1, 0b1};
 
     EXPECT_THROW(m.x(3), std::out_of_range);
     EXPECT_THROW(m.cnot(1, 1), std::invalid_argument);
@@ -209,7 +211,11 @@ TEST(StateMachine, WhenConditionsOnlyTheNextOperation)
     EXPECT_TRUE(statesNear(m.state(), amplitudes(3, {{0b111, 1.0}}), 0.0));
 
     ASSERT_TRUE(m.circuit()[2].condition.has_value());
-    EXPECT_EQ(m.circuit()[2].condition->clbit, 0u);
+    EXPECT_EQ(m.circuit()[2].condition->mask, 0b1u);
+    EXPECT_EQ(m.circuit()[2].condition->value, 0b1u);
+    ASSERT_TRUE(m.circuit()[3].condition.has_value());
+    EXPECT_EQ(m.circuit()[3].condition->mask, 0b1u);
+    EXPECT_EQ(m.circuit()[3].condition->value, 0u);
     EXPECT_FALSE(m.circuit()[4].condition.has_value());
 
     m.when(0);

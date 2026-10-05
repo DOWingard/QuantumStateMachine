@@ -1,0 +1,5 @@
+noether 0.2
+# expect: E2006 1:9
+## the header asks for a language version newer than this binary implements
+qubits q[1]
+H_0

@@ -1,0 +1,7 @@
+noether 0.1
+# expect: W0005 7:1
+## with noise and no `trajectories K`, the readout samples one trajectory
+qubits q[1]
+H_0
+depolarize(0.01)_0
+print \expval{X_0}

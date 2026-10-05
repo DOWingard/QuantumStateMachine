@@ -1,0 +1,8 @@
+noether 0.1
+# expect: W0003 7:5
+## the loop variable k hides the global k
+qubits q[2]
+let k = 1
+X_k
+for k in 0..1:
+    H_k

@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E1002 6:1
+## the loop body is indented with a tab instead of spaces
+qubits q[2]
+for k in 0..1:
+	H_k

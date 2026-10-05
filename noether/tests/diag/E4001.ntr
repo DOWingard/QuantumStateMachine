@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E4001 5:4
+## a rotation angle must be a number, not a ket
+qubits q[1]
+Rx(|0>)_0

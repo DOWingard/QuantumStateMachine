@@ -1,0 +1,37 @@
+{
+  "asserts": [],
+  "backend": "statevector",
+  "backendReason": "`Ry` is not Clifford",
+  "diagnostics": [],
+  "formatted": false,
+  "lang": "0.1",
+  "ok": true,
+  "params": {
+    "θ": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  },
+  "prints": [
+    {
+      "label": "energy",
+      "line": 12,
+      "stderr": null,
+      "text": "⟨Ham⟩",
+      "value": -3.0
+    }
+  ],
+  "resources": {
+    "clbits": 0,
+    "clifford": false,
+    "count2q": 3,
+    "depth": 5,
+    "depth2q": 3,
+    "ops": 11,
+    "peakBytes": 256,
+    "qubits": 4,
+    "tcount": 0
+  },
+  "runs": [],
+  "schema": "noether.run/1",
+  "seed": 1,
+  "sourceSha256": "c3be313228b84487882cbc3f1d930a24fd5a718a59d842462a254ccaab491a88",
+  "version": "0.1.0"
+}

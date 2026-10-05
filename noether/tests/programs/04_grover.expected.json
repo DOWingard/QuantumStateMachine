@@ -1,0 +1,44 @@
+{
+  "asserts": [
+    {
+      "lhs": 0.9991823155432992,
+      "line": 10,
+      "passed": true,
+      "rhs": 0.99,
+      "text": "|⟨11111|ψ⟩|^2 > 0.99",
+      "tol": null
+    }
+  ],
+  "backend": "statevector",
+  "backendReason": "`C_{4 controls}(Z)` is not Clifford",
+  "diagnostics": [],
+  "formatted": false,
+  "lang": "0.1",
+  "ok": true,
+  "params": {},
+  "prints": [
+    {
+      "label": "success",
+      "line": 9,
+      "stderr": null,
+      "text": "|⟨11111|ψ⟩|^2",
+      "value": 0.9991823155432992
+    }
+  ],
+  "resources": {
+    "clbits": 0,
+    "clifford": false,
+    "count2q": 8,
+    "depth": 25,
+    "depth2q": 8,
+    "ops": 93,
+    "peakBytes": 512,
+    "qubits": 5,
+    "tcount": 0
+  },
+  "runs": [],
+  "schema": "noether.run/1",
+  "seed": 1,
+  "sourceSha256": "df1eddba48e1664cc69950ac2a6754947cfc4953a17ebf1af30499b30e01621a",
+  "version": "0.1.0"
+}

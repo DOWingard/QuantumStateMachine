@@ -1,0 +1,33 @@
+noether 0.1
+## A 10 000-qubit GHZ state on the stabilizer (tableau) backend.
+##
+## GHZ_N = (|0…0⟩ + |1…1⟩)/√2 is a stabilizer state with generators X^{⊗N} and Z_j Z_{j+1},
+## so a Clifford tableau holds it in O(N²) bits where a state vector would need 2^N amplitudes.
+##
+## Expected, exactly: ⟨Z_0 Z_{N-1}⟩ = 1, ⟨X^{⊗N}⟩ = 1, ⟨Z_0⟩ = 0, and the reduced state of any
+## proper subset is (|0…0⟩⟨0…0| + |1…1⟩⟨1…1|)/2, so S(ρ_{first half}) = 1 bit while the whole
+## register is pure, S = 0. Sampling four qubits spread across the chain must give only the
+## perfectly correlated strings 0000 and 1111, each with P = 1/2: over 2000 shots each count is
+## 1000 ± 22 (1σ); the asserts allow ±75.
+import "std/gates.ntr"
+let N = 10000
+qubits q[N]; bits c[4]; seed 11
+backend stabilizer
+prepare |0⟩^⊗N
+GHZ_q
+print ⟨Z_0 Z_{N - 1}⟩ as endToEnd, ⟨X_q⟩ as allX, ⟨Z_0⟩ as z0
+assert ⟨Z_0 Z_{N - 1}⟩ ≈ 1 ± 1e-12
+assert ⟨X_q⟩ ≈ 1 ± 1e-12
+assert ⟨Z_0⟩ ≈ 0 ± 1e-12
+print entropy(ρ_{q[0..N/2 - 1]}) as halfEntropy, entropy(ρ_q) as totalEntropy
+assert entropy(ρ_{q[0..N/2 - 1]}) ≈ 1 ± 1e-12
+assert entropy(ρ_{q[0..N - 2]}) ≈ 1 ± 1e-12
+assert entropy(ρ_q) ≈ 0 ± 1e-12
+c[0] ← measure Z_0
+c[1] ← measure Z_{floor(N/3)}
+c[2] ← measure Z_{N/2}
+c[3] ← measure Z_{N - 1}
+counts ← run 2000
+print counts
+assert counts["0000"] + counts["1111"] == 2000
+assert counts["0000"] ≈ 1000 ± 75

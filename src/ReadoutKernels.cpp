@@ -219,6 +219,188 @@ cd pauliSum(const QuantumStateVector& s, Index xMask, Index zMask)
     return symmetric ? cd{2.0 * half, 0.0} : cd{0.0, 2.0 * half};
 }
 
+namespace
+{
+    // x conj(y), as plain real arithmetic like sq().
+    inline cd mulConj(cd x, cd y) noexcept
+    {
+        return {x.real() * y.real() + x.imag() * y.imag(), x.imag() * y.real() - x.real() * y.imag()};
+    }
+
+    // Ascending (1 << q) - 1 for insertZeros, which then enumerates the other qubits' assignments.
+    std::vector<Index> sortedLowMasks(std::span<const Qubit> qubits)
+    {
+        std::vector<Index> lowMasks;
+        for (const Qubit q : qubits) lowMasks.push_back((Index{1} << q) - 1);
+        std::ranges::sort(lowMasks);
+        return lowMasks;
+    }
+
+    // One Kraus channel's branch weights over a range of subspaces: sum_r |(K_k v)_r|^2 per
+    // operator. Each operator takes its own pass (the range stays cache-resident) with four
+    // interleaved partial sums, p mod 4, which break the dependency chain of a single sum and
+    // are combined in a fixed order. D is the operator dimension when fixed at compile time,
+    // 0 otherwise.
+    struct KrausBlock
+    {
+        const cd* a;
+        std::span<const Index> masks;
+        const Index* offsets;
+        const cd* mats;
+        Index dim, count;
+
+        template <Index D>
+        void sum(Index begin, Index end, double* out) const
+        {
+            const Index d = D != 0 ? D : dim;
+            for (Index k = 0; k < count; ++k)
+            {
+                const cd* u = mats + k * d * d;
+                std::array<double, 4> lane{};
+                for (Index p = begin; p < end; ++p)
+                {
+                    const Index base = insertZeros(p, masks);
+                    double w = 0.0;
+                    for (Index r = 0; r < d; ++r)
+                    {
+                        double re = 0.0, im = 0.0;
+                        for (Index c = 0; c < d; ++c)
+                        {
+                            const cd x = a[base | offsets[c]], m = u[r * d + c];
+                            re += m.real() * x.real() - m.imag() * x.imag();
+                            im += m.real() * x.imag() + m.imag() * x.real();
+                        }
+                        w += re * re + im * im;
+                    }
+                    lane[p % 4] += w;
+                }
+                out[k] = (lane[0] + lane[1]) + (lane[2] + lane[3]);
+            }
+        }
+    };
+
+    // Up to 32 x 32 entries a density matrix is accumulated per block of e and the blocks are
+    // summed in order, like the reductions. Larger ones have enough columns to split instead.
+    constexpr Index kDensityBlockMaxDim = 32;
+
+    // Amplitudes gathered per pass of the column split (1 MiB), so every column re-reads them
+    // from cache instead of striding through the state once per column.
+    constexpr Index kDensityChunk = Index{1} << 16;
+} // namespace
+
+void krausWeights(const QuantumStateVector& s, std::span<const DenseGate> ops, double* out)
+{
+    const std::vector<Index>& offsets = ops[0].offsets;
+    const Index dim = offsets.size();
+    const Index count = ops.size();
+    const Index subspaces = s.size() / dim;
+    const std::vector<Index> lowMasks = sortedLowMasks(ops[0].targets);
+    std::vector<cd> mats; // every K_k row-major, back to back
+    for (const DenseGate& op : ops) mats.insert(mats.end(), op.rowMajor.begin(), op.rowMajor.end());
+    const KrausBlock block{s.data(), lowMasks, offsets.data(), mats.data(), dim, count};
+
+    // Fixed blocks of subspaces, one partial per operator each, combined in block order.
+    const Index blocks = std::min(blockCount(s.size()), subspaces);
+    std::vector<double> parts(blocks * count);
+    QPUTER_OMP(parallel for schedule(static) if(blocks > 1))
+    for (Index b = 0; b < blocks; ++b)
+    {
+        double* acc = parts.data() + b * count;
+        const Index begin = subspaces * b / blocks, end = subspaces * (b + 1) / blocks;
+        switch (dim)
+        {
+            case 2:  block.sum<2>(begin, end, acc); break;
+            case 4:  block.sum<4>(begin, end, acc); break;
+            default: block.sum<0>(begin, end, acc); break;
+        }
+    }
+
+    std::fill_n(out, count, 0.0);
+    for (Index b = 0; b < blocks; ++b)
+        for (Index k = 0; k < count; ++k) out[k] += parts[b * count + k];
+}
+
+void reducedDensityMatrix(const QuantumStateVector& s, std::span<const Qubit> qubits, cd* out)
+{
+    const std::size_t k = qubits.size();
+    const Index dim = Index{1} << k;
+    const Index rest = s.size() >> k;
+    const std::vector<Index> lowMasks = sortedLowMasks(qubits);
+    const std::span<const Index> masks{lowMasks};
+    const cd* a = s.data();
+
+    // offset[r] = amplitude bits of local index r, qubits[0] <-> MSB of r.
+    std::vector<Index> offset(dim, 0);
+    for (Index r = 0; r < dim; ++r)
+        for (std::size_t j = 0; j < k; ++j)
+            if ((r >> (k - 1 - j)) & 1U) offset[r] |= Index{1} << qubits[j];
+    const Index* off = offset.data();
+
+    // Only the lower triangle (r >= c, contiguous in column c) is summed. Small matrices sum
+    // fixed blocks of e and combine them in block order; larger ones give each entry one sum
+    // in ascending e. Either way the order depends on N and k alone, never on the threads.
+    std::fill_n(out, dim * dim, cd{0.0, 0.0});
+    if (dim <= kDensityBlockMaxDim)
+    {
+        const Index blocks = std::min(blockCount(s.size()), rest);
+        const Index entries = dim * dim;
+        std::vector<cd> parts(blocks * entries);
+        QPUTER_OMP(parallel for schedule(static) if(blocks > 1))
+        for (Index b = 0; b < blocks; ++b)
+        {
+            std::array<cd, kDensityBlockMaxDim> v{};
+            std::array<cd, kDensityBlockMaxDim * kDensityBlockMaxDim> acc{};
+            for (Index e = rest * b / blocks; e < rest * (b + 1) / blocks; ++e)
+            {
+                const Index base = insertZeros(e, masks);
+                for (Index r = 0; r < dim; ++r) v[r] = a[base | off[r]];
+                for (Index c = 0; c < dim; ++c)
+                    for (Index r = c; r < dim; ++r) acc[c * dim + r] += mulConj(v[r], v[c]);
+            }
+            std::copy_n(acc.begin(), entries, parts.begin() + static_cast<std::ptrdiff_t>(b * entries));
+        }
+        for (Index b = 0; b < blocks; ++b)
+            for (Index c = 0; c < dim; ++c)
+                for (Index r = c; r < dim; ++r) out[c * dim + r] += parts[b * entries + c * dim + r];
+    }
+    else
+    {
+        // Chunks of e in order: gather each chunk e-major, then split the columns, column c
+        // owning entries (r >= c, c). Worksharing barriers keep the gather and the sums apart.
+        const Index chunk = std::min(rest, std::max<Index>(1, kDensityChunk / dim));
+        std::vector<cd> gathered(chunk * dim);
+        cd* g = gathered.data();
+        QPUTER_OMP(parallel if(s.size() >= kParallelThreshold))
+        for (Index e0 = 0; e0 < rest; e0 += chunk)
+        {
+            const Index len = std::min(chunk, rest - e0);
+            QPUTER_OMP(for schedule(static))
+            for (Index el = 0; el < len; ++el)
+            {
+                const Index base = insertZeros(e0 + el, masks);
+                for (Index r = 0; r < dim; ++r) g[el * dim + r] = a[base | off[r]];
+            }
+            QPUTER_OMP(for schedule(dynamic, 1)) // column c holds dim - c entries
+            for (Index c = 0; c < dim; ++c)
+            {
+                cd* col = out + c * dim;
+                for (Index el = 0; el < len; ++el)
+                {
+                    const cd* row = g + el * dim;
+                    const cd vc = row[c];
+                    for (Index r = c; r < dim; ++r) col[r] += mulConj(row[r], vc);
+                }
+            }
+        }
+    }
+
+    for (Index c = 0; c < dim; ++c)
+    {
+        out[c * dim + c] = cd{out[c * dim + c].real(), 0.0};
+        for (Index r = c + 1; r < dim; ++r) out[r * dim + c] = std::conj(out[c * dim + r]);
+    }
+}
+
 void collapse(QuantumStateVector& s, Index mask, Index value, double scale)
 {
     const Index n = s.size();
@@ -226,6 +408,14 @@ void collapse(QuantumStateVector& s, Index mask, Index value, double scale)
     QPUTER_OMP(parallel for schedule(static) if(n >= kParallelThreshold))
     for (Index i = 0; i < n; ++i)
         a[i] = (i & mask) == value ? cd{scale * a[i].real(), scale * a[i].imag()} : cd{0.0, 0.0};
+}
+
+void scaleAmplitudes(QuantumStateVector& s, double scale)
+{
+    const Index n = s.size();
+    cd* a = s.data();
+    QPUTER_OMP(parallel for schedule(static) if(n >= kParallelThreshold))
+    for (Index i = 0; i < n; ++i) a[i] = cd{scale * a[i].real(), scale * a[i].imag()};
 }
 
 Index findCumulative(const QuantumStateVector& s, double target)

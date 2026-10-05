@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E4006 5:7
+## S is not Hermitian, so it has no expectation value
+qubits q[1]
+print \expval{S_0}

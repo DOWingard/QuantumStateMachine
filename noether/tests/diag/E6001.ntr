@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E6001 6:1
+## the stabilizer backend runs Clifford operations only; T is not Clifford
+backend stabilizer
+qubits q[1]
+T_0

@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E4005 6:4
+## a param may enter an angle only affinely
+qubits q[1]
+param theta in [-pi, pi] = 0
+Rz(sin(theta))_0

@@ -1,0 +1,12 @@
+noether 0.1
+let N = 4, J = 1.0, g = 1.0
+qubits q[N]
+let Ham = -J Σ_{j=0}^{N - 2} Z_j Z_{j + 1} - g Σ_{j=0}^{N - 1} X_j
+param θ[2·N] ∈ [-π, π] = 0
+for j ∈ 0..N - 1:
+    Ry(θ[j])_j
+for j ∈ 0..N - 2:
+    CNOT_{j→j + 1}
+for j ∈ 0..N - 1:
+    Ry(θ[N + j])_j
+print ⟨Ham⟩ as energy

@@ -1,0 +1,35 @@
+noether 0.1
+## Quench of the transverse-field Ising chain, simulated with product formulas (trotter).
+##
+##     Ham = -J Σ_{j=0}^{N-2} Z_j Z_{j+1} - g Σ_{j=0}^{N-1} X_j,   N = 8, open boundary.
+##
+## Start in |0…0⟩, a ground state of the g = 0 ferromagnet, then evolve under Ham at the
+## critical field g = J = 1 for t = 2. Unitary evolution conserves every moment of Ham, so
+##     ⟨Ham⟩(t) = ⟨Ham⟩(0) = -J(N-1) = -7,
+##     ⟨Ham²⟩(t) = ⟨Ham²⟩(0) = J²(N-1)² + g²N = 57   (Var Ham = g²N = 8, from the X_j terms).
+## A product formula of order p only conserves them up to O(t·dt^p). With order 4 and 40 steps
+## the drift is about 3e-6; the asserts allow 1e-4. Exact diagonalisation of the 256×256 Ham gives
+## ⟨Z_0⟩(2) = 0.0586591 and ⟨X_3⟩(2) = 0.4160210, matched here to 1e-5.
+##
+## Order 2 with the same 40 steps drifts by ≈ 9e-3 in energy (O(dt²)), checked as a bound.
+## A symmetric product formula is time-reversible, so the Loschmidt echo
+## trotter(Ham, -t) trotter(Ham, t) returns to |0…0⟩ to rounding error.
+let N = 8, J = 1, g = 1, t = 2
+qubits q[N]; seed 1
+let Ham = -J Σ_{j=0}^{N - 2} Z_j Z_{j + 1} - g Σ_{j=0}^{N - 1} X_j
+prepare |0⟩^⊗N
+assert ⟨Ham⟩ ≈ -J (N - 1) ± 1e-12
+assert ⟨Ham^2⟩ ≈ J^2 (N - 1)^2 + g^2 N ± 1e-12
+trotter(Ham, t, steps=40, order=4)
+print ⟨Ham⟩ as energy, ⟨Ham^2⟩ as energySq, ⟨Z_0⟩ as z0, ⟨X_3⟩ as x3
+assert ⟨Ham⟩ ≈ -J (N - 1) ± 1e-4
+assert ⟨Ham^2⟩ ≈ J^2 (N - 1)^2 + g^2 N ± 1e-3
+assert ⟨Z_0⟩ ≈ 0.0586591 ± 1e-5
+assert ⟨X_3⟩ ≈ 0.4160210 ± 1e-5
+prepare |0⟩^⊗N
+trotter(Ham, t, steps=40, order=2)
+print ⟨Ham⟩ as energyOrder2
+assert ⟨Ham⟩ ≈ -J (N - 1) ± 2e-2
+trotter(Ham, -t, steps=40, order=2)
+print |⟨00000000|ψ⟩|^2 as echo
+assert |⟨00000000|ψ⟩|^2 ≈ 1 ± 1e-9

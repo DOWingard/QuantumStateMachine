@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E1003 4:6
+## the Greek omicron in the middle of a Latin name looks like "pos"
+let pοs = 1
+print pοs

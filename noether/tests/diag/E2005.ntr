@@ -1,0 +1,4 @@
+# expect: E2005 3:1
+## the `noether 0.1` version header line is missing
+qubits q[1]
+H_0

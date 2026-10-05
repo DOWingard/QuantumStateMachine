@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <Eigen/Eigenvalues>
 
 
 
@@ -53,7 +54,7 @@ namespace
         bool stabilizer; // runs on the stabilizer backend
     };
 
-    constexpr std::array<Spec, 26> kSpecs{{
+    constexpr std::array<Spec, 28> kSpecs{{
         {"x", 0, 1, 0, true},        {"y", 0, 1, 0, true},     {"z", 0, 1, 0, true},
         {"h", 0, 1, 0, true},        {"s", 0, 1, 0, true},     {"sdg", 0, 1, 0, true},
         {"t", 0, 1, 0, false},       {"tdg", 0, 1, 0, false},  {"sx", 0, 1, 0, true},
@@ -65,8 +66,37 @@ namespace
         {"mcx", kAny, 1, 0, false},  {"mcz", 0, kAny, 0, false}, {"mcphase", 0, kAny, 1, false},
         {"unitary", kAny, kAny, 0, false},
         {"measure", 0, 1, 0, true},  {"reset", 0, 1, 0, true},
+        {"pauli_channel", 0, kAny, kAny, true}, {"kraus", 0, kAny, 0, false},
     }};
-    static_assert(static_cast<std::size_t>(OpKind::Reset) + 1 == kSpecs.size());
+    static_assert(static_cast<std::size_t>(OpKind::Kraus) + 1 == kSpecs.size());
+
+    // Slack on sum(p) <= 1 for pauli_channel, so probabilities computed in floating point pass.
+    constexpr double kProbabilitySumTolerance = 1e-12;
+
+    // Largest reduced_density_matrix: 2^13 x 2^13 complex entries, 1 GiB.
+    constexpr std::size_t kMaxDensityQubits = 13;
+
+    // Eigenvalues of a reduced density matrix at or below this count as rounding noise in entropy().
+    constexpr double kEigenvalueCutoff = 1e-15;
+
+    // The replay-ready form of an operation: one prepared gate for a unitary, one per operator for
+    // a Kraus channel, null for every other kind.
+    using PreparedGates = std::shared_ptr<const std::vector<detail::DenseGate>>;
+
+    std::span<const detail::DenseGate> gatesOf(const PreparedGates& prepared) noexcept
+    {
+        return prepared ? std::span<const detail::DenseGate>{*prepared} : std::span<const detail::DenseGate>{};
+    }
+
+    PreparedGates prepareGates(const Operation& op)
+    {
+        std::vector<detail::DenseGate> gates;
+        if (op.kind == OpKind::Unitary) gates.push_back(detail::prepareDense(op.controls, op.targets, op.matrix));
+        else if (op.kind == OpKind::Kraus)
+            for (const Eigen::MatrixXcd& K : op.kraus) gates.push_back(detail::prepareDense({}, op.targets, K));
+        else return nullptr;
+        return std::make_shared<const std::vector<detail::DenseGate>>(std::move(gates));
+    }
 
     const Spec& specOf(OpKind kind)
     {
@@ -145,6 +175,70 @@ namespace
         claimQubits(n, ctx, {qubits});
     }
 
+    void requireCondition(const Condition& cond, std::size_t numClbits, std::string_view ctx)
+    {
+        if (cond.mask == 0) throw std::invalid_argument(std::format("{}: condition mask selects no clbit", ctx));
+        if ((cond.value & ~cond.mask) != 0)
+            throw std::invalid_argument(std::format("{}: condition value {:#x} sets bits outside mask {:#x}",
+                                                    ctx, cond.value, cond.mask));
+        if (numClbits < 64 && (cond.mask >> numClbits) != 0)
+            throw std::out_of_range(std::format("{}: condition clbit {} out of range [0, {})", ctx,
+                                                std::bit_width(cond.mask) - 1, numClbits));
+    }
+
+    // One probability per non-identity Pauli string on the targets (3 or 15), each in [0, 1],
+    // summing to at most 1; the identity takes the rest.
+    void requirePauliChannel(const Operation& op, std::string_view ctx)
+    {
+        const std::size_t m = op.targets.size();
+        if (m > 2) throw std::invalid_argument(std::format("{}: {} targets given, expected 1 or 2", ctx, m));
+        const std::size_t terms = m == 1 ? 3 : 15;
+        if (op.params.size() != terms)
+            throw std::invalid_argument(std::format("{}: {} probabilities given, expected {} for {} target(s)",
+                                                    ctx, op.params.size(), terms, m));
+        double total = 0.0;
+        for (const double p : op.params)
+        {
+            if (!(p >= 0.0 && p <= 1.0))
+                throw std::invalid_argument(std::format("{}: probability {} outside [0, 1]", ctx, p));
+            total += p;
+        }
+        if (!(total <= 1.0 + kProbabilitySumTolerance))
+            throw std::invalid_argument(std::format("{}: probabilities sum to {:.17g} > 1", ctx, total));
+    }
+
+    // Throws std::invalid_argument unless `ops` is a non-empty set of finite 2^M x 2^M matrices
+    // with max |(sum_k K_k^dagger K_k - I)_ij| <= QuantumGate::kUnitaryTolerance.
+    void requireKraus(const std::vector<Eigen::MatrixXcd>& ops, std::size_t m, std::string_view ctx)
+    {
+        if (ops.empty()) throw std::invalid_argument(std::format("{}: at least one Kraus operator required", ctx));
+        const auto dim = static_cast<Eigen::Index>(bit(m));
+        for (std::size_t k = 0; k < ops.size(); ++k)
+        {
+            if (ops[k].rows() != dim || ops[k].cols() != dim)
+                throw std::invalid_argument(std::format("{}: operator {} is {}x{}, expected {}x{} for {} target(s)",
+                                                        ctx, k, ops[k].rows(), ops[k].cols(), dim, dim, m));
+            if (!ops[k].allFinite())
+                throw std::invalid_argument(std::format("{}: operator {} contains NaN or Inf", ctx, k));
+        }
+
+        Eigen::MatrixXcd sum = Eigen::MatrixXcd::Zero(dim, dim);
+        for (const Eigen::MatrixXcd& K : ops) sum.noalias() += K.adjoint() * K;
+        const double err = (sum - Eigen::MatrixXcd::Identity(dim, dim)).cwiseAbs().maxCoeff();
+        if (!(err <= QuantumGate::kUnitaryTolerance))
+            throw std::invalid_argument(std::format("{}: operators not trace preserving, "
+                                                    "max|sum K^dag K - I| = {:.3e} > {:.1e}",
+                                                    ctx, err, QuantumGate::kUnitaryTolerance));
+    }
+
+    Eigen::MatrixXcd densityMatrix(const QuantumStateVector& s, const QubitList& qubits)
+    {
+        const auto dim = static_cast<Eigen::Index>(bit(qubits.size()));
+        Eigen::MatrixXcd rho(dim, dim);
+        detail::reducedDensityMatrix(s, qubits, rho.data());
+        return rho;
+    }
+
 
     // ---- Execution (shared by the live system and every replayed shot) ----
 
@@ -171,9 +265,9 @@ namespace
     void flipQubit(QuantumStateVector& s, Qubit q) { QuantumGate::x(s, q); }
     void flipQubit(StabilizerState& s, Qubit q) { s.x(q); }
 
-    // Every operation except measure and reset. `dense` is the prepared form of op when op is
-    // a unitary, unused otherwise.
-    void applyGate(QuantumStateVector& s, const Operation& op, const detail::DenseGate* dense)
+    // Every operation except measure, reset and the channels. `dense` holds the prepared form
+    // of op when op is a unitary, unused otherwise.
+    void applyGate(QuantumStateVector& s, const Operation& op, std::span<const detail::DenseGate> dense)
     {
         const QubitList& c = op.controls;
         const QubitList& t = op.targets;
@@ -204,14 +298,16 @@ namespace
             case OpKind::MCX:     QuantumGate::mcx(s, c, t[0]); break;
             case OpKind::MCZ:     QuantumGate::mcz(s, t); break;
             case OpKind::MCPhase: QuantumGate::mcphase(s, t, p[0]); break;
-            case OpKind::Unitary: detail::applyDense(s, *dense); break;
+            case OpKind::Unitary: detail::applyDense(s, dense[0]); break;
             case OpKind::Measure:
             case OpKind::Reset:
+            case OpKind::PauliChannel:
+            case OpKind::Kraus:
                 throw std::logic_error(std::format("applyGate: {} is not a gate", opName(op.kind)));
         }
     }
 
-    void applyGate(StabilizerState& s, const Operation& op, const detail::DenseGate*)
+    void applyGate(StabilizerState& s, const Operation& op, std::span<const detail::DenseGate>)
     {
         const QubitList& c = op.controls;
         const QubitList& t = op.targets;
@@ -233,11 +329,87 @@ namespace
         }
     }
 
-    // Returns the measured value for measure, -1 otherwise (including skipped operations).
-    template <class State>
-    int execute(State& s, Outcome& creg, const Operation& op, const detail::DenseGate* dense, Rng& rng)
+    // Letter 1, 2, 3 = X, Y, Z; 0 (identity) does nothing.
+    void applyPauli(QuantumStateVector& s, Qubit q, std::size_t letter)
     {
-        if (op.condition && (((creg >> op.condition->clbit) & 1U) != 0) != op.condition->value) return -1;
+        switch (letter)
+        {
+            case 1: QuantumGate::x(s, q); break;
+            case 2: QuantumGate::y(s, q); break;
+            case 3: QuantumGate::z(s, q); break;
+            default: break;
+        }
+    }
+
+    void applyPauli(StabilizerState& s, Qubit q, std::size_t letter)
+    {
+        switch (letter)
+        {
+            case 1: s.x(q); break;
+            case 2: s.y(q); break;
+            case 3: s.z(q); break;
+            default: break;
+        }
+    }
+
+    // One draw u on either backend: term k runs for the first k with u < p_0 + ... + p_k, none
+    // once u reaches the total. A zero-probability term leaves the running sum unchanged, so it
+    // is never the first to exceed u. Term k is the string k + 1 in base 4 over the targets,
+    // targets[0] the high digit, with digits I X Y Z = 0 1 2 3.
+    template <class State>
+    void applyPauliChannel(State& s, const Operation& op, Rng& rng)
+    {
+        const double u = rng.uniform();
+        double cumulative = 0.0;
+        for (std::size_t k = 0; k < op.params.size(); ++k)
+        {
+            cumulative += op.params[k];
+            if (u < cumulative)
+            {
+                const std::size_t m = op.targets.size();
+                for (std::size_t j = 0; j < m; ++j) applyPauli(s, op.targets[j], ((k + 1) >> (2 * (m - 1 - j))) & 3U);
+                return;
+            }
+        }
+    }
+
+    // Branch k with probability ||K_k psi||^2 from one draw, then psi := K_k psi / ||K_k psi||.
+    void applyKraus(QuantumStateVector& s, std::span<const detail::DenseGate> ops, Rng& rng)
+    {
+        std::vector<double> weight(ops.size());
+        detail::krausWeights(s, ops, weight.data());
+        const double total = std::accumulate(weight.begin(), weight.end(), 0.0);
+        if (!(total > 0.0) || !std::isfinite(total))
+            throw std::domain_error(std::format("kraus: state has squared norm {}", total));
+
+        // As in measureQubit, a zero-weight branch adds nothing to the running sum, so it is never
+        // the first to exceed the draw; rounding that carries the draw past the total falls back
+        // to the last branch with nonzero weight.
+        const double draw = rng.uniform() * total;
+        std::size_t pick = 0;
+        double cumulative = 0.0;
+        for (std::size_t k = 0; k < ops.size(); ++k)
+        {
+            if (weight[k] > 0.0) pick = k;
+            cumulative += weight[k];
+            if (draw < cumulative) break;
+        }
+        detail::applyDense(s, ops[pick]);
+        detail::scaleAmplitudes(s, 1.0 / std::sqrt(weight[pick]));
+    }
+
+    void applyKraus(StabilizerState&, std::span<const detail::DenseGate>, Rng&)
+    {
+        // validate() rejects kraus on this backend
+        throw std::logic_error("applyKraus: kraus reached the stabilizer backend");
+    }
+
+    // Returns the measured value for measure, -1 otherwise (including skipped operations).
+    // `prepared` is gatesOf() the operation's cached form.
+    template <class State>
+    int execute(State& s, Outcome& creg, const Operation& op, std::span<const detail::DenseGate> prepared, Rng& rng)
+    {
+        if (op.condition && (creg & op.condition->mask) != op.condition->value) return -1;
 
         switch (op.kind)
         {
@@ -250,8 +422,14 @@ namespace
             case OpKind::Reset:
                 if (measureQubit(s, op.targets[0], rng) == 1) flipQubit(s, op.targets[0]);
                 return -1;
+            case OpKind::PauliChannel:
+                applyPauliChannel(s, op, rng);
+                return -1;
+            case OpKind::Kraus:
+                applyKraus(s, prepared, rng);
+                return -1;
             default:
-                applyGate(s, op, dense);
+                applyGate(s, op, prepared);
                 return -1;
         }
     }
@@ -629,13 +807,16 @@ void QuantumStateMachine::validate(const Operation& op) const
 
     claimQubits(num_qubits(), ctx, {op.controls, op.targets});
 
-    if (op.kind == OpKind::Unitary)
+    if (op.kind == OpKind::Unitary || op.kind == OpKind::Kraus)
     {
         if (op.targets.size() > QuantumGate::kMaxDenseTargets)
             throw std::invalid_argument(std::format("{}: {} targets exceeds {}", ctx, op.targets.size(),
                                                     QuantumGate::kMaxDenseTargets));
-        QuantumGate::require_unitary(op.matrix, op.targets.size(), ctx);
+        if (op.kind == OpKind::Unitary) QuantumGate::require_unitary(op.matrix, op.targets.size(), ctx);
+        else requireKraus(op.kraus, op.targets.size(), ctx);
     }
+
+    if (op.kind == OpKind::PauliChannel) requirePauliChannel(op, ctx);
 
     if (op.clbit)
     {
@@ -649,9 +830,7 @@ void QuantumStateMachine::validate(const Operation& op) const
     {
         if (op.kind == OpKind::Measure)
             throw std::invalid_argument(std::format("{}: measurements cannot be conditioned", ctx));
-        if (op.condition->clbit >= nClbits)
-            throw std::out_of_range(std::format("{}: condition clbit {} out of range [0, {})",
-                                                ctx, op.condition->clbit, nClbits));
+        requireCondition(*op.condition, nClbits, ctx);
     }
 }
 
@@ -665,11 +844,8 @@ int QuantumStateMachine::commit(Operation op)
     }
     validate(op);
 
-    std::shared_ptr<const detail::DenseGate> prepared;
-    if (op.kind == OpKind::Unitary)
-        prepared = std::make_shared<const detail::DenseGate>(detail::prepareDense(op.controls, op.targets, op.matrix));
-
-    const int result = std::visit([&](auto& s) { return execute(s, creg, op, prepared.get(), rng); }, live);
+    PreparedGates prepared = prepareGates(op);
+    const int result = std::visit([&](auto& s) { return execute(s, creg, op, gatesOf(prepared), rng); }, live);
     dense.push_back(std::move(prepared));
     try
     {
@@ -695,7 +871,15 @@ QuantumStateMachine& QuantumStateMachine::when(std::size_t clbit, bool value)
     if (clbit >= nClbits)
         throw std::out_of_range(std::format("QuantumStateMachine::when: clbit {} out of range [0, {})",
                                             clbit, nClbits));
-    pending = Condition{clbit, value};
+    pending = Condition{bit(clbit), value ? bit(clbit) : 0};
+    return *this;
+}
+
+QuantumStateMachine& QuantumStateMachine::when_bits(Outcome mask, Outcome value)
+{
+    const Condition cond{mask, value};
+    requireCondition(cond, nClbits, "QuantumStateMachine::when_bits");
+    pending = cond;
     return *this;
 }
 
@@ -803,6 +987,22 @@ QuantumStateMachine& QuantumStateMachine::controlled_unitary(const QubitList& co
 {
     Operation op = makeOp(OpKind::Unitary, controls, targets);
     op.matrix = U;
+    return append(std::move(op));
+}
+
+
+
+// ---- Noise channels ----
+
+QuantumStateMachine& QuantumStateMachine::pauli_channel(const QubitList& targets, std::vector<double> probabilities)
+{
+    return append(makeOp(OpKind::PauliChannel, {}, targets, std::move(probabilities)));
+}
+
+QuantumStateMachine& QuantumStateMachine::kraus(const QubitList& targets, std::vector<Eigen::MatrixXcd> operators)
+{
+    Operation op = makeOp(OpKind::Kraus, {}, targets);
+    op.kraus = std::move(operators);
     return append(std::move(op));
 }
 
@@ -992,6 +1192,51 @@ Counts QuantumStateMachine::sample_counts(const QubitList& qubits, std::size_t s
     return tally(out);
 }
 
+Eigen::MatrixXcd QuantumStateMachine::reduced_density_matrix(const QubitList& qubits) const
+{
+    constexpr std::string_view ctx = "QuantumStateMachine::reduced_density_matrix";
+    requireReadoutQubits(qubits, nQubits, ctx);
+    if (qubits.size() > kMaxDensityQubits)
+        throw std::length_error(std::format("{}: {} qubits exceed the {}-qubit limit of a 2^k x 2^k matrix",
+                                            ctx, qubits.size(), kMaxDensityQubits));
+    const auto* s = std::get_if<QuantumStateVector>(&live);
+    if (!s)
+        throw std::invalid_argument(std::format("{}: the stabilizer backend holds no amplitudes; use entropy() "
+                                                "or state_vector()", ctx));
+    return densityMatrix(*s, qubits);
+}
+
+double QuantumStateMachine::entropy(const QubitList& qubits) const
+{
+    constexpr std::string_view ctx = "QuantumStateMachine::entropy";
+    claimQubits(nQubits, ctx, {qubits});
+    if (const auto* t = std::get_if<StabilizerState>(&live))
+        return static_cast<double>(t->entanglement_entropy(qubits));
+    if (qubits.empty() || qubits.size() == nQubits) return 0.0;
+
+    // A pure state's two sides share their nonzero spectrum, so the smaller side's matrix
+    // suffices: at most 2^12 x 2^12 for N <= kMaxQubits.
+    QubitList side = qubits;
+    if (2 * qubits.size() > nQubits)
+    {
+        std::vector<char> inA(nQubits, 0);
+        for (const Qubit q : qubits) inA[q] = 1;
+        side.clear();
+        for (Qubit q = 0; q < nQubits; ++q)
+            if (!inA[q]) side.push_back(q);
+    }
+
+    const Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> eig(densityMatrix(std::get<QuantumStateVector>(live), side),
+                                                              Eigen::EigenvaluesOnly);
+    if (eig.info() != Eigen::Success)
+        throw std::runtime_error(std::format("{}: eigenvalue solver did not converge for {} qubits", ctx,
+                                             side.size()));
+    double bits = 0.0;
+    for (const double lambda : eig.eigenvalues())
+        if (lambda > kEigenvalueCutoff) bits -= lambda * std::log2(lambda);
+    return bits > 0.0 ? bits : 0.0; // a pure side's single eigenvalue may round just above 1
+}
+
 
 
 // ---- Circuit execution ----
@@ -1001,7 +1246,8 @@ bool QuantumStateMachine::terminal_measurements_only() const
     std::vector<char> measured(nQubits, 0);
     for (const Operation& op : ops)
     {
-        if (op.kind == OpKind::Reset || op.condition) return false;
+        if (op.kind == OpKind::Reset || op.kind == OpKind::PauliChannel || op.kind == OpKind::Kraus || op.condition)
+            return false;
         if (op.kind == OpKind::Measure)
         {
             measured[op.targets[0]] = 1;
@@ -1044,9 +1290,9 @@ void QuantumStateMachine::runSampled(std::uint64_t base, std::vector<Outcome>& o
     {
         loadPreparation(s);
         Outcome unusedCreg = 0;
-        Rng unusedRng{base}; // no measure, reset or condition reaches execute() on this path
+        Rng unusedRng{base}; // no measure, reset, channel or condition reaches execute() on this path
         for (std::size_t k = 0; k < ops.size(); ++k)
-            if (ops[k].kind != OpKind::Measure) execute(s, unusedCreg, ops[k], dense[k].get(), unusedRng);
+            if (ops[k].kind != OpKind::Measure) execute(s, unusedCreg, ops[k], gatesOf(dense[k]), unusedRng);
         sampleRegisters(s, terminalReadout(ops, nQubits), base, outcomes);
     }, scratch);
 }
@@ -1076,7 +1322,7 @@ void QuantumStateMachine::runTrajectories(std::uint64_t base, std::vector<Outcom
                     loadPreparation(s);
                     Outcome reg = 0;
                     Rng r{base, shot};
-                    for (std::size_t k = 0; k < ops.size(); ++k) execute(s, reg, ops[k], dense[k].get(), r);
+                    for (std::size_t k = 0; k < ops.size(); ++k) execute(s, reg, ops[k], gatesOf(dense[k]), r);
                     outcomes[shot] = reg;
                 }, scratch);
             }

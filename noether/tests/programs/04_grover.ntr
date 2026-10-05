@@ -1,0 +1,10 @@
+noether 0.1
+let n = 5
+qubits q[n]
+def Oracle_{r[m]}: C_{r[0..m - 2]}(Z_{r[m - 1]})  # marks |1…1⟩
+def Diffuse_{r[m]}: H_r X_r C_{r[0..m - 2]}(Z_{r[m - 1]}) X_r H_r
+H_q
+for k ∈ 1..floor(π/4 √(2^n)):  # 4 iterations
+    Diffuse_q Oracle_q
+print |⟨11111|ψ⟩|^2 as success
+assert |⟨11111|ψ⟩|^2 > 0.99  # sin²(9·asin(2^{-5/2})) ≈ 0.9992

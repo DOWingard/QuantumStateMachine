@@ -1,0 +1,8 @@
+noether 0.1
+# expect: E3004 5:1
+## the def is used before the statement that defines it (no hoisting)
+qubits q[2]
+Bell_{0,1}
+def Bell_{a,b}:
+    H_a
+    CNOT_{a->b}

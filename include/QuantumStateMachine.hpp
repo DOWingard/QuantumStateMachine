@@ -70,6 +70,7 @@ enum class OpKind : std::uint8_t
     MCX, MCZ, MCPhase,                                     // N qubit
     Unitary,                                               // dense, optionally controlled
     Measure, Reset,                                        // non-unitary
+    PauliChannel, Kraus,                                   // noise, sampled per trajectory
 };
 
 // Lowercase names matching the QuantumStateMachine method of the same operation.
@@ -77,7 +78,7 @@ std::string_view opName(OpKind kind);
 std::optional<OpKind> opKindFromName(std::string_view name);
 
 // True for the operations the stabilizer backend runs: the Clifford gates x y z h s sdg sx
-// cnot cz swap, plus measure and reset.
+// cnot cz swap, plus measure, reset and pauli_channel.
 bool stabilizerSupports(OpKind kind);
 
 
@@ -88,27 +89,30 @@ enum class Backend : std::uint8_t
     Stabilizer,  // tableau, stabilizerSupports() operations only, N <= kMaxStabilizerQubits
 };
 
-// Classical feed-forward: the operation runs only while clbit holds `value`.
+// Classical feed-forward: the operation runs only while (classical register & mask) == value.
 struct Condition
 {
-    std::size_t clbit = 0;
-    bool value = true;
+    Outcome mask = 0;
+    Outcome value = 0;
 };
 
 // One instruction of the recorded circuit. Qubit roles by kind:
 //   controls: cnot/cz/cphase {c}, toffoli {c0, c1}, fredkin {c}, mcx {c...}, unitary {c...}
 //   targets:  1-qubit gates, measure, reset {q}; cnot/cz/cphase/toffoli/mcx {t}; swap {a, b};
-//             fredkin {a, b}; mcz/mcphase {all qubits}; unitary {t...}, targets[0] = MSB of U's index
-// params: rx/ry/rz/phase {angle}, cphase/mcphase {lambda}, u3 {theta, phi, lambda}.
+//             fredkin {a, b}; mcz/mcphase {all qubits}; unitary {t...}, targets[0] = MSB of U's index;
+//             pauli_channel {q} or {a, b}; kraus {t...}, targets[0] = MSB of each K's index
+// params: rx/ry/rz/phase {angle}, cphase/mcphase {lambda}, u3 {theta, phi, lambda},
+//         pauli_channel {3 or 15 probabilities, see QuantumStateMachine::pauli_channel}.
 struct Operation
 {
     OpKind kind = OpKind::X;
     QubitList controls;
     QubitList targets;
     std::vector<double> params;
-    Eigen::MatrixXcd matrix;            // unitary only
-    std::optional<std::size_t> clbit;   // measure only; nullopt discards the outcome
-    std::optional<Condition> condition; // any kind except measure
+    Eigen::MatrixXcd matrix;              // unitary only
+    std::vector<Eigen::MatrixXcd> kraus;  // kraus only
+    std::optional<std::size_t> clbit;     // measure only; nullopt discards the outcome
+    std::optional<Condition> condition;   // any kind except measure
 };
 
 
@@ -117,12 +121,13 @@ struct Operation
 // preparation.
 //
 // The register is a state vector (any operation, 16 * 2^N bytes) or a stabilizer tableau
-// (Clifford gates, measure and reset; O(N / 64) per gate, O(N^2 / 64) per measurement, N^2 / 2
-// bytes). Backend::Auto takes the state vector up to kMaxQubits and the tableau above it;
-// either can be requested explicitly. Every readout and run() reports the same results on
-// both, and for a Clifford circuit the same seed gives the same outcomes on both: random
-// choices select an outcome by rank in index order from the same draws (barring
-// floating-point ties at a state-vector CDF boundary).
+// (Clifford gates, Pauli channels, measure and reset; O(N / 64) per gate, O(N^2 / 64) per
+// measurement, N^2 / 2 bytes). Backend::Auto takes the state vector up to kMaxQubits and the
+// tableau above it; either can be requested explicitly. Every readout (but the state-vector
+// only reduced_density_matrix) and run() reports the same results on both, and for a Clifford
+// circuit the same seed gives the same outcomes on both: random choices select an outcome by
+// rank in index order from the same draws (barring floating-point ties at a state-vector CDF
+// boundary), and a Pauli channel takes one draw on either backend.
 //
 // Execution is eager: every operation is validated, applied in place to the live state,
 // then recorded. Readout never modifies the live state. run(shots) replays the recorded
@@ -211,12 +216,28 @@ class QuantumStateMachine
     QuantumStateMachine& controlled_unitary(const QubitList& controls, const QubitList& targets,
                                             const Eigen::MatrixXcd& U);
 
+    // ---- Noise channels: the live system samples one branch now, every replayed shot its own ----
+
+    // Stochastic Pauli error: with probability params[k] applies the k-th non-identity Pauli. One target: params
+    // {pX, pY, pZ}. Two targets: 15 params for P_a (x) P_b in the order IX IY IZ XI XX XY XZ YI YX YY YZ ZI ZX ZY ZZ
+    // (first letter on targets[0]). Runs on both backends.
+    QuantumStateMachine& pauli_channel(const QubitList& targets, std::vector<double> probabilities);
+
+    // General CPTP channel sum_k K_k rho K_k^dagger on 1 <= M <= kMaxDenseTargets targets (targets[0] = MSB of each
+    // K's index, as for unitary()); each trajectory picks branch k with probability ||K_k psi||^2 and renormalizes.
+    // State vector only.
+    QuantumStateMachine& kraus(const QubitList& targets, std::vector<Eigen::MatrixXcd> operators);
+
     // Generic entry point (e.g. for circuits deserialized from JSON); same validation.
     QuantumStateMachine& append(Operation op);
 
-    // Classical feed-forward for the NEXT appended gate or reset: it runs only if `clbit`
-    // currently holds `value`, both now and on every replayed shot.
+    // Classical feed-forward for the NEXT appended gate, reset or channel: it runs only if
+    // `clbit` currently holds `value`, both now and on every replayed shot.
     QuantumStateMachine& when(std::size_t clbit, bool value = true);
+
+    // Classical feed-forward for the NEXT appended gate, reset or channel: it runs only if every clbit in `mask`
+    // currently holds the corresponding bit of `value`, both now and on every replayed shot.
+    QuantumStateMachine& when_bits(Outcome mask, Outcome value);
 
 
     // ---- Measurement: collapses the live state and is recorded ----
@@ -239,13 +260,22 @@ class QuantumStateMachine
     std::vector<Outcome> sample(const QubitList& qubits, std::size_t shots);
     Counts sample_counts(const QubitList& qubits, std::size_t shots);
 
+    // Reduced density matrix of `qubits` (distinct, 1 <= k <= 13), qubits[0] = MSB of the row/column index.
+    // State vector only; O(2^(N+k)).
+    Eigen::MatrixXcd reduced_density_matrix(const QubitList& qubits) const;
+
+    // Von Neumann entropy of the reduced state of `qubits`, in bits. State vector: eigenvalues of the reduced
+    // density matrix of the smaller of `qubits` and its complement (same nonzero spectrum); eigenvalues below 1e-15
+    // are dropped. Stabilizer: StabilizerState::entanglement_entropy, exact. An empty set or all N qubits gives 0.
+    double entropy(const QubitList& qubits) const;
+
 
     // ---- Circuit execution ----
 
     // Replays the circuit `shots` times from the recorded preparation and tallies the
-    // classical register. When every measurement is terminal (no reset, no condition, no
-    // later gate on a measured qubit) the state is simulated once and the shots are
-    // sampled from it; otherwise each shot is an independent trajectory.
+    // classical register. When every measurement is terminal (no reset, channel or
+    // condition, no later gate on a measured qubit) the state is simulated once and the
+    // shots are sampled from it; otherwise each shot is an independent trajectory.
     Counts run(std::size_t shots);
     bool terminal_measurements_only() const;
 
@@ -270,10 +300,10 @@ class QuantumStateMachine
     Register live;
     Outcome creg = 0;
     std::vector<Operation> ops;
-    // Aligned with ops: the replay-ready form of each validated unitary, null for every
-    // other kind, so replays skip re-validation and re-layout. Immutable, hence shared
-    // between copies of the machine.
-    std::vector<std::shared_ptr<const detail::DenseGate>> dense;
+    // Aligned with ops: the replay-ready form of each validated unitary (one gate) and Kraus
+    // channel (one gate per operator), null for every other kind, so replays skip
+    // re-validation and re-layout. Immutable, hence shared between copies of the machine.
+    std::vector<std::shared_ptr<const std::vector<detail::DenseGate>>> dense;
     std::optional<Condition> pending;
 
     Outcome prepIndex = 0;                         // replay start when prepAmplitudes is empty

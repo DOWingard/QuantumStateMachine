@@ -1,0 +1,9 @@
+noether 0.1
+# expect: E5006 9:1
+## a proc measures, so it has no adjoint
+qubits q[1]
+bits c[1]
+proc Round_{a}:
+    H_a
+    c[0] <- measure Z_a
+Round\dagger_0

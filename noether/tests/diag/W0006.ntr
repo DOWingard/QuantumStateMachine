@@ -1,0 +1,6 @@
+noether 0.1
+# expect: W0006 6:7
+## printing the 13-qubit state vector lists up to 2^13 amplitudes
+qubits q[13]
+T_0
+print |psi>

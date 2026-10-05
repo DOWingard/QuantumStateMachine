@@ -1,0 +1,9 @@
+noether 0.1
+## Phase oracle marking |1…1⟩ on the register.
+def MarkOnes_{r[m]}: C_{r[0..m-2]}(Z_{r[m-1]})
+
+## Grover diffusion 2|s⟩⟨s| − I (up to global phase) about the uniform superposition |s⟩.
+def Diffuse_{r[m]}: H_r X_r C_{r[0..m-2]}(Z_{r[m-1]}) X_r H_r
+
+## One Grover iteration for the all-ones target.
+def GroverStep_{r[m]}: Diffuse_r MarkOnes_r

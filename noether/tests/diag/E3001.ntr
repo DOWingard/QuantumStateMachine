@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E3001 5:1
+## misspelt gate name (Toffoli)
+qubits q[3]
+Tofoli_{0,1->2}

@@ -1,0 +1,83 @@
+noether 0.1
+## Noise channels and `noise:` rules, checked against their analytic decay laws.
+##
+## A Pauli channel maps the Bloch vector (r_x, r_y, r_z) to (λ_x r_x, λ_y r_y, λ_z r_z):
+##   flip(p)            λ_z = 1 − 2p                    |0⟩: ⟨Z⟩ = 1 − 2p = 0.8
+##   dephase(p)         λ_x = 1 − 2p                    |+⟩: ⟨X⟩ = 1 − 2p = 0.8
+##   depolarize(p)      λ = 1 − 4p/3                    |0⟩: ⟨Z⟩ = 1 − 4p/3 = 0.8 at p = 0.15
+##   pauli(px, py, pz)  λ_x = 1 − 2(py + pz), λ_y = 1 − 2(px + pz), λ_z = 1 − 2(px + py),
+##                      on the state with Bloch vector (sin θ cos φ, sin θ sin φ, cos θ)
+##   depolarize2(p)     ZZ anticommutes with 8 of the 15 two-qubit Paulis, so on |Φ⁺⟩
+##                      ⟨Z₀Z₁⟩ = ⟨X₀X₁⟩ = 1 − 16p/15 = 0.84 at p = 0.15
+## Non-Pauli channels (state vector only):
+##   ampdamp(γ)         |1⟩: ⟨Z⟩ = 2γ − 1 = −0.4;  |+⟩: ⟨X⟩ = √(1 − γ) = 0.83666 at γ = 0.3
+##   kraus([K₀, K₁])    phase damping K₀ = |0⟩⟨0| + √(1−λ)|1⟩⟨1|, K₁ = √λ |1⟩⟨1|:
+##                      |+⟩: ⟨X⟩ = √(1 − λ) = 0.8 at λ = 0.36, ⟨Z⟩ = 0
+## The `noise:` block applies to everything after it: dephase(p) after every 1-qubit gate,
+## depolarize2(p2) after every 2-qubit gate, flip(pm) before every measurement. Preparing
+## |Φ⁺⟩ with H then CNOT gives ⟨Z₀Z₁⟩ = 1 − 16p2/15 = 0.84 (the Z error from dephasing on the
+## control commutes with Z₀Z₁) and ⟨X₀X₁⟩ = (1 − 2p)(1 − 16p2/15) = 0.672. Reading out in Z, the
+## parity is odd with probability (1 − (1 − 16p2/15)(1 − 2pm)²)/2 = 0.1598.
+##
+## Readouts average over 20 000 Monte Carlo trajectories. Each tolerance is 3σ of the
+## trajectory mean, σ computed from the per-trajectory spread of the two-outcome branches
+## (e.g. flip: 2√(p(1−p))/√20000 = 0.0042); the runtime widens every check by a further
+## 2·stderr. Odd-parity counts over 20 000 shots: 3196 ± 52 (1σ), asserted ±160.
+let p = 0.1, gam = 0.3, lam = 0.36, px = 0.05, py = 0.1, pz = 0.2
+let θ = π/3, φ = π/4, p2 = 0.15, pm = 0.05
+qubits q[2]; bits c[2]; seed 17; trajectories 20000
+prepare |00⟩
+flip(p)_0
+print ⟨Z_0⟩ as flipZ
+assert ⟨Z_0⟩ ≈ 1 - 2p ± 0.013
+prepare |00⟩
+H_0
+dephase(p)_0
+print ⟨X_0⟩ as dephaseX
+assert ⟨X_0⟩ ≈ 1 - 2p ± 0.013
+prepare |00⟩
+depolarize(3p/2)_0
+print ⟨Z_0⟩ as depolarizeZ
+assert ⟨Z_0⟩ ≈ 1 - 4/3 (3p/2) ± 0.013
+prepare |00⟩
+Rz(φ)_0 Ry(θ)_0
+pauli(px, py, pz)_0
+print ⟨X_0⟩ as pauliX, ⟨Y_0⟩ as pauliY, ⟨Z_0⟩ as pauliZ
+assert ⟨X_0⟩ ≈ (1 - 2 (py + pz)) sin(θ) cos(φ) ± 0.012
+assert ⟨Y_0⟩ ≈ (1 - 2 (px + pz)) sin(θ) sin(φ) ± 0.012
+assert ⟨Z_0⟩ ≈ (1 - 2 (px + py)) cos(θ) ± 0.008
+prepare |00⟩
+H_0; CNOT_{0→1}
+depolarize2(p2)_{0,1}
+print ⟨Z_0 Z_1⟩ as depolarize2ZZ, ⟨X_0 X_1⟩ as depolarize2XX
+assert ⟨Z_0 Z_1⟩ ≈ 1 - 16p2/15 ± 0.012
+assert ⟨X_0 X_1⟩ ≈ 1 - 16p2/15 ± 0.012
+prepare |10⟩
+ampdamp(gam)_0
+print ⟨Z_0⟩ as ampdampZ
+assert ⟨Z_0⟩ ≈ 2gam - 1 ± 0.02
+prepare |00⟩
+H_0
+ampdamp(gam)_0
+print ⟨X_0⟩ as ampdampX
+assert ⟨X_0⟩ ≈ √(1 - gam) ± 0.008
+prepare |00⟩
+H_0
+kraus([|0⟩ ⟨0| + √(1 - lam)|1⟩ ⟨1|, √(lam)|1⟩ ⟨1|])_0
+print ⟨X_0⟩ as phaseDampX, ⟨Z_0⟩ as phaseDampZ
+assert ⟨X_0⟩ ≈ √(1 - lam) ± 0.008
+assert ⟨Z_0⟩ ≈ 0 ± 0.01
+noise:
+    after gate1: dephase(p)
+    after gate2: depolarize2(p2)
+    before measure: flip(pm)
+prepare |00⟩
+H_0
+CNOT_{0→1}
+print ⟨Z_0 Z_1⟩ as noisyBellZZ, ⟨X_0 X_1⟩ as noisyBellXX
+assert ⟨Z_0 Z_1⟩ ≈ 1 - 16p2/15 ± 0.012
+assert ⟨X_0 X_1⟩ ≈ (1 - 2p) (1 - 16p2/15) ± 0.016
+c ← measure_q
+counts ← run 20000
+print counts
+assert counts["01"] + counts["10"] ≈ 20000 (1 - (1 - 16p2/15) (1 - 2pm)^2)/2 ± 160

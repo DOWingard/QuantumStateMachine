@@ -1,0 +1,34 @@
+noether 0.1
+## Grover search for one marked item w = 101101 among N = 2^6 = 64.
+##
+## The oracle flips the sign of |w⟩ (a 5-fold controlled Z with negative controls on the
+## 0 bits of w); std/grover.ntr supplies the diffusion 2|s⟩⟨s| − I. Each iteration rotates the
+## state by 2θ in the plane of |s⟩ and |w⟩, with sin θ = 1/√N, so after k iterations
+##     P(success) = sin²((2k+1)θ).
+## The optimal count is k = ⌊π/(4θ)⌋ = 6, giving P = sin²(13θ) = 0.996586. Running twice as
+## long over-rotates past |w⟩: k = 12 gives sin²(25θ) ≈ 7.1e-5.
+##
+## The language has no arcsin, so θ = arcsin(1/8) is written out and checked via sin²θ = 1/N.
+## Expected counts over 2000 shots: 2000·0.996586 = 1993.2 ± 2.6 (1σ); the assert allows ±10.
+import "std/grover.ntr"
+let n = 6, θ = 0.1253278311680654, k = floor(π/(4θ))
+def Oracle_{r[6]}: C_{r[0], ¬r[1], r[2], r[3], ¬r[4]}(Z_{r[5]})
+qubits q[n]; bits c[n]; seed 5
+assert sin(θ)^2 ≈ 1/2^n ± 1e-15
+assert k == 6
+prepare |0⟩^⊗n
+H_q
+for j ∈ 1..2k:
+    Diffuse_q Oracle_q
+print |⟨101101|ψ⟩|^2 as pOverRotated
+assert |⟨101101|ψ⟩|^2 ≈ sin((4k + 1) θ)^2 ± 1e-9
+prepare |0⟩^⊗n
+H_q
+for j ∈ 1..k:
+    Diffuse_q Oracle_q
+print k as iterations, |⟨101101|ψ⟩|^2 as pSuccess
+assert |⟨101101|ψ⟩|^2 ≈ sin((2k + 1) θ)^2 ± 1e-9
+c ← measure_q
+counts ← run 2000
+print counts["101101"] as hits
+assert counts["101101"] ≈ 2000 sin((2k + 1) θ)^2 ± 10

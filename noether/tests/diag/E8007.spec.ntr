@@ -1,0 +1,9 @@
+noether 0.1
+task "toffoli"
+qubits q[3]
+candidate def Algo_{q[3]}
+target unitary Toffoli_{0,1->2}
+gates {H, S, S\dagger, T, T\dagger, CNOT}
+forbid Toffoli, C
+require fidelity >= 1 - 1e-12
+minimize tcount

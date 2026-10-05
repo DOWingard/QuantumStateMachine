@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E5008 5:3
+## qubit indices are 0-based: q[2] has qubits 0 and 1
+qubits q[2]
+H_2

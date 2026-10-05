@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E5010 6:17
+## measure takes a Pauli string; H is not a Pauli
+qubits q[1]
+bits c[1]
+c[0] <- measure H_0

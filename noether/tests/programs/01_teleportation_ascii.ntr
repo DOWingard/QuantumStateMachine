@@ -1,0 +1,14 @@
+noether 0.1
+qubits q[3]; bits c[2]; seed 7
+let theta = pi/3, phi = pi/5
+prepare (cos(theta/2)|0> + e^{i phi} sin(theta/2)|1>) \otimes |00>
+CNOT_{1->2} H_1
+H_0 CNOT_{0->1}
+c[0] <- measure Z_0
+c[1] <- measure Z_1
+if c[1]: X_2
+if c[0]: Z_2
+print \expval{X_2}, \expval{Y_2}, \expval{Z_2}
+assert \expval{X_2} ~= sin(theta) cos(phi)
+assert \expval{Y_2} ~= sin(theta) sin(phi)
+assert \expval{Z_2} ~= cos(theta)

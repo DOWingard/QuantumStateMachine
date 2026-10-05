@@ -8,8 +8,8 @@ A C++23 quantum simulator with two backends behind one API:
   O(N) per gate and O(N²/64) per measurement, using N²/2 bytes.
 
 Registers above 25 qubits use the tableau automatically. Smaller registers can opt into
-it. Both backends handle measurement, classical feed-forward, and multi-shot circuit
-execution. Seeded runs give bitwise-identical results for any thread count, and for a
+it. Both backends handle measurement, classical feed-forward, Pauli noise channels, and
+multi-shot circuit execution. Seeded runs give bitwise-identical results for any thread count, and for a
 Clifford circuit the same seed gives the same outcomes on either backend.
 
 ```cpp
@@ -27,6 +27,19 @@ for (Qputer::Qubit q = 1; q < 1000; ++q) big.cnot(q - 1, q); // 1000-qubit GHZ
 big.t(0);                                              // throws: T is not Clifford
 ```
 
+The same machine can be driven from **Noether**, a physics-notation scripting language
+(`.ntr` files) with its own CLI, formatter and diagnostics, built in `noether/`, with agent
+skills for it in `skills/`:
+
+```
+noether 0.1
+qubits q[2]; bits c[2]; seed 2026
+CNOT_{0→1} H_0                 # products act right to left: H first
+assert ⟨Z_0 Z_1⟩ ≈ 1
+c ← measure_q
+counts ← run 10000
+```
+
 ---
 
 ## Contents
@@ -42,6 +55,7 @@ big.t(0);                                              // throws: T is not Cliff
 - [Determinism](#determinism)
 - [Limits and error handling](#limits-and-error-handling)
 - [Tests](#tests)
+- [Noether](#noether)
 - [File reference](#file-reference)
 
 ---
@@ -77,6 +91,7 @@ cmake --preset release && cmake --build --preset release && ctest --preset relea
 | `QPUTER_NATIVE`      | `ON`               | Adds `-march=native` (PUBLIC, so every TU agrees on Eigen alignment). |
 | `QPUTER_BUILD_TESTS` | top-level project  | Builds `qputer_tests`.                                    |
 | `QPUTER_BUILD_EXAMPLES` | top-level project | Builds the programs in `examples/` (registered with ctest when tests are built). |
+| `QPUTER_BUILD_NOETHER` | top-level project | Builds the Noether language library, the `noether` CLI and (with tests) `noether_tests`. |
 
 Every first-party target is built with `-Wall -Wextra -Wpedantic -Wconversion -Wshadow
 -Wnon-virtual-dtor -Wold-style-cast -Werror`. Debug builds also add
@@ -90,7 +105,9 @@ every kernel runs single-threaded.
 |-----------------|----------------|-------------------------------------------------------------|
 | `qputer_lib`    | static library | State vector, gate kernels, readout kernels, stabilizer tableau, state machine. |
 | `qputer`        | executable     | Demo: Bell pair, 5-qubit GHZ marginal, teleportation, 1000-qubit GHZ. |
-| `qputer_tests`  | executable     | GoogleTest suite (99 tests).                                |
+| `qputer_tests`  | executable     | GoogleTest suite (131 tests).                               |
+| `noether_lib`, `noether` | static library, executable | The Noether compiler, executor and tools; the `noether` CLI (`build/<preset>/noether/noether`). |
+| `noether_tests` | executable     | Noether GoogleTest suite (253 test cases, many parameterised over programs and fixtures). |
 | `phase_estimation`, `variational`, `repetition_code` | executables | Example algorithms in `build/<preset>/examples/`; see [Writing your own algorithms](#writing-your-own-algorithms). |
 
 ### Demo output (`make run`)
@@ -242,6 +259,7 @@ t.h(0); t.s(1); t.cnot(0, 1); t.cz(1, 2); t.swap(0, 2);   // also x y z sdg sx
 int r = t.measure(q, outcomeIfRandom);   // certain outcome, or the given 0/1 if random
 OutcomeSupport sup = t.outcome_support({0, 2});  // joint Z distribution, state unchanged
 int e = t.expectation("XZ", {0, 1});     // exactly -1, 0 or +1
+std::size_t S = t.entanglement_entropy(std::vector<Qubit>{0, 1});  // bits; GF(2) rank of the restricted generators
 std::vector<std::string> g = t.stabilizers();    // e.g. {"+XX", "+ZZ"}
 QuantumStateVector psi = t.to_state_vector();    // n ≤ 25
 ```
@@ -262,7 +280,7 @@ the seed in use, so you can reproduce any run.
 |---------------|--------------------------------|---------------------------------------------------|--------------|
 | `Auto`        | `StateVector` if N ≤ 25, else `Stabilizer` | —                                     | 1 … 65 536   |
 | `StateVector` | 2^N amplitudes                 | all                                               | 1 … 25       |
-| `Stabilizer`  | tableau                        | `x y z h s sdg sx cnot cz swap`, measure, reset, `when` | 1 … 65 536 |
+| `Stabilizer`  | tableau                        | `x y z h s sdg sx cnot cz swap`, `pauli_channel`, measure, reset, `when` | 1 … 65 536 |
 
 To use the tableau on a small register, request it explicitly:
 `QuantumStateMachine m{10, 10, seed, Backend::Stabilizer}`. `stabilizerSupports(kind)`
@@ -275,14 +293,17 @@ tells you whether an `OpKind` runs on the tableau.
 | Preparation     | `prepare()` → \|0…0⟩, `prepare_basis(i)` → \|i⟩, `prepare_state(amps)` (state vector only; must satisfy \|‖ψ‖² − 1\| ≤ 1e-10). Each one clears the circuit and the classical register. |
 | Gates (chainable) | every `QuantumGate` gate as a method returning `*this`, plus `unitary(targets, U)` and `controlled_unitary(controls, targets, U)` |
 | Generic         | `append(Operation)`: the same validation path as the named methods, intended for deserialized circuits |
-| Feed-forward    | `when(clbit, value = true)`: the *next* gate or reset runs only if `clbit == value` |
+| Feed-forward    | `when(clbit, value = true)`: the *next* gate, reset or channel runs only if `clbit == value`; `when_bits(mask, value)`: only if `(classical_register() & mask) == value` |
+| Noise           | `pauli_channel(targets, probabilities)`: one target {pX, pY, pZ}, two targets 15 probabilities (order IX IY … ZZ, first letter on targets[0]), sum ≤ 1, both backends. `kraus(targets, {K…})`: Σ K†K = I within 1e-10, state vector only. The live system samples one branch; each replayed shot samples its own. |
 | Measurement     | `measure(q, clbit?)` → 0/1, `measure_all()` → basis index (needs `num_clbits ≥ num_qubits`), `reset(q)` |
-| Readout         | `probabilities()`, `probability(i)`, `marginal_probabilities(qubits)`, `expectation("XZY", qubits)`, `sample(qubits, shots)`, `sample_counts(qubits, shots)` |
+| Readout         | `probabilities()`, `probability(i)`, `marginal_probabilities(qubits)`, `expectation("XZY", qubits)`, `sample(qubits, shots)`, `sample_counts(qubits, shots)`, `entropy(qubits)` (von Neumann, bits), `reduced_density_matrix(qubits)` (state vector only, k ≤ 13, qubits[0] = MSB) |
 | Execution       | `run(shots)` → `Counts`, `terminal_measurements_only()`, `bitstring(value, width)` |
 
 **Readout never collapses the live state.** `sample*` does advance the RNG.
 `expectation` computes ⟨ψ|P|ψ⟩ for a Pauli string P = ⊗_k σ_k on the listed qubits,
-using the letters `I X Y Z`. Every readout works on both backends. Vector results
+using the letters `I X Y Z`. Every readout except `reduced_density_matrix` works on both
+backends; `entropy` is exact on the tableau and uses the smaller side of the cut on the
+state vector. Vector results
 (`probabilities`, `marginal_probabilities`) have 2^k entries, so they need k ≤ 25.
 `sample` reads at most 64 qubits, because an `Outcome` is 64 bits wide.
 
@@ -311,8 +332,9 @@ Counts c = tele.run(10000);            // clbit 2 is 0 in every shot
 - `targets`
 - `params`
 - `matrix` (unitary only)
+- `kraus` (kraus only)
 - `clbit` (measure only)
-- `condition` (an optional `Condition{clbit, value}`)
+- `condition` (an optional `Condition{mask, value}`: runs only while `(classical register & mask) == value`)
 
 `opName(kind)` and `opKindFromName(name)` convert between `OpKind` values and the
 lowercase method names, which makes the circuit straightforward to serialize.
@@ -362,12 +384,13 @@ registers. The live system is not modified. The circuit must contain at least on
 measurement into a classical bit. `run` picks one of two strategies:
 
 1. **Sampled** (`terminal_measurements_only() == true`): used when there is no reset, no
-   condition, and no gate after a measurement on the measured qubit. The unitary part is
+   channel, no condition, and no gate after a measurement on the measured qubit. The unitary part is
    simulated once. The joint marginal over the measured qubits is built as a CDF, and S
    outcomes are drawn from it.
    Cost: one circuit pass + O(2^k) + O(S log 2^k).
 2. **Trajectories** (all other circuits): each shot is an independent stochastic run with
-   real mid-circuit collapse and feed-forward.
+   real mid-circuit collapse, feed-forward and channel sampling. A Pauli channel takes one
+   draw on either backend; a Kraus channel picks branch k with probability ‖K_k ψ‖².
    Cost: S × circuit cost. Registers of up to 2^17 amplitudes (2 MiB, so one register
    per thread still fits a typical last-level cache) run one shot per thread with serial
    gates. Larger registers run shots one after another, outside any parallel region, and
@@ -666,7 +689,7 @@ the calling function's name:
 |--------------------------|--------------------------------------------------------------|
 | `std::length_error`      | register size out of range for the backend; readout vector or conversion over 2^25 entries |
 | `std::out_of_range`      | qubit, clbit, or basis index out of range                    |
-| `std::invalid_argument`  | duplicate qubits, wrong arity, non-finite parameters, non-unitary matrix, conditioned measurement, run with no measurement, non-Clifford operation or `prepare_state` on the stabilizer backend |
+| `std::invalid_argument`  | duplicate qubits, wrong arity, non-finite parameters, non-unitary matrix, channel probabilities outside [0, 1] or summing above 1, Kraus operators that are not trace preserving, empty or out-of-mask conditions, conditioned measurement, run with no measurement, non-Clifford operation, `kraus` or `prepare_state` on the stabilizer backend |
 | `std::logic_error`       | `state()` on the stabilizer backend, `stabilizer_state()` on the state-vector backend |
 | `std::domain_error`      | sampling or measuring a zero-norm or non-finite state        |
 
@@ -677,8 +700,9 @@ partially applied.
 
 ## Tests
 
-`make test` runs 99 GoogleTest cases plus the three examples (102 ctest entries). In Debug
-mode they all run under ASan and UBSan.
+`make test` runs 131 GoogleTest cases, the three examples and the 253 Noether test cases
+(387 ctest entries; `ctest -L noether` selects the Noether ones). In Debug mode they all run
+under ASan and UBSan.
 
 | File                          | Covers                                                                 |
 |-------------------------------|------------------------------------------------------------------------|
@@ -693,6 +717,8 @@ mode they all run under ASan and UBSan.
 | `test_readout.cpp`            | Probabilities, marginals (both kernel paths, any qubit order), Pauli expectations, Born-rule sampling without collapse, zero-weight exclusion, sorted-sweep path. |
 | `test_measurement.cpp`        | Collapse = normalized projection, Born-rule frequencies, reset, both `run` strategies vs the exact distribution, replay from the prepared state, live state untouched, thread-count independence. |
 | `test_stabilizer.cpp`         | Tableau alone: textbook conjugation rules, random Clifford circuits vs the reference operator, exact basis-state conversion, global-phase convention, ⟨P⟩ for every Pauli string, generators stabilize the state, outcome support = Born distribution in rank order, collapse = projection, qubits across word boundaries, 1000-qubit GHZ, input rejection. |
+| `test_channels.cpp`           | `when_bits` on several clbits (live pass = `run`, both backends, validation). Pauli channels: certain Paulis act as their gates, the documented two-qubit order, flip frequencies, forced trajectories, identical seeded outcomes on both backends, conditioned channels, validation. Kraus channels: full amplitude damping, Born-rule branch frequencies, target convention, normalized post-branch state, validation, thread-count independence. |
+| `test_entropy.cpp`            | Entropy of Bell, product, GHZ, partially entangled (binary entropy) and random states vs the reference on either side of the cut, tableau entropy vs the state vector on random Clifford circuits, a 20 000-qubit GHZ half cut, validation. Reduced density matrices vs the reference partial trace, thread-count independence, validation. |
 | `test_backend_comparison.cpp` | Backend selection at the cutoff, Clifford-only enforcement above it, 1000-qubit GHZ through the state machine. The same circuit on both backends, checked against each other and the expected answer: random Clifford circuits (state, probabilities, marginals, ⟨P⟩ vs the reference operator), GHZ, superdense coding, teleportation with feed-forward, reset + conditioned gates, live mid-circuit measurement, sampling. Identical seeded counts across backends, thread-count independence. |
 
 `tests/TestSupport.hpp` provides the oracle. `embed()` builds the full operator column by
@@ -702,6 +728,30 @@ unitaries (QR of a Ginibre matrix with phase correction), random states and circ
 random Clifford circuits with their reference states and Pauli expectations, textbook
 matrices, and `statesNear` / `statesNearUpToPhase` assertions that report the
 worst-mismatching index.
+
+---
+
+## Noether
+
+Noether writes circuits the way physics papers do: kets, operator products acting right to
+left, subscripts for qubits, `⟨…⟩` for expectation values, Σ and ∏ for sums and products. It
+compiles to the operations above and runs them on a `QuantumStateMachine`. ASCII and LaTeX
+spellings are accepted (`CNOT_{0->1}`, `\expval{Z_0}`, `S\dagger_0`), and every compiling
+command first rewrites the file to one canonical Unicode form.
+
+```sh
+build/release/noether/noether run noether/examples/teleport.ntr --json
+build/release/noether/noether check f.ntr --json      # diagnostics with codes, spans and fix-its
+```
+
+The CLI also draws circuits, estimates resources, checks equivalence, optimises parameters,
+exports OpenQASM 3 and runs an autonomous research loop against a task spec. The full
+description, the examples and the test layout are in `noether/README.md`.
+
+`skills/` holds three skills for coding agents: `qsm` (writing and running Noether
+programs), `qsm-research` (the research loop) and `qsm-tune` (tuning the simulator for the
+host). They are embedded in the `noether` binary, and `noether skill --install DIR` writes
+them into any skills directory an agent reads.
 
 ---
 
@@ -732,8 +782,10 @@ worst-mismatching index.
 │   ├── StabilizerState.cpp     Column-major Clifford updates, bit-sliced measurement, outcome support, conversion
 │   ├── QuantumStateMachine.cpp Backend dispatch, validation, execution, sampling, run()
 │   └── Parallel.hpp            QPUTER_OMP macro, thread helpers, kParallelThreshold, teamSize
+├── noether/                    Noether language, `noether` CLI, examples and tests
+├── skills/                     Agent skills: qsm, qsm-research, qsm-tune
 └── tests/
     ├── CMakeLists.txt          qputer_tests + GoogleTest discovery
     ├── TestSupport.hpp         Reference operator, random states/unitaries, assertions
-    └── test_*.cpp              12 suites, see Tests above
+    └── test_*.cpp              14 suites, see Tests above
 ```

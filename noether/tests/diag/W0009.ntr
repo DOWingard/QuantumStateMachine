@@ -1,0 +1,6 @@
+noether 0.1
+# expect: W0009 5:9
+## S (S) with a space is the product S*S, not a call
+qubits q[1]
+let U = S (S)
+U_0

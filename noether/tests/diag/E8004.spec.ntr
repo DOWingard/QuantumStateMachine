@@ -1,0 +1,8 @@
+noether 0.1
+task "ghz-line"
+qubits q[3]
+candidate def Algo_{q[3]}
+target state (|000> + |111>)/sqrt(2)
+gates {H, CNOT}
+coupling line
+require fidelity >= 1 - 1e-9

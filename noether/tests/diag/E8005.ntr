@@ -1,0 +1,7 @@
+noether 0.1
+# expect: E8005 5:1
+# args: --spec {dir}/E8005.spec.ntr
+## the spec asks for Algo_{q[2]}, a single two-qubit register
+def Algo_{a, b}:
+    H_a
+    CNOT_{a->b}

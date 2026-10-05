@@ -91,6 +91,10 @@ class StabilizerState
     // letters IXYZ. O(k N / 64) to test commutation, plus O(N^2 / 64) when P is in the group.
     int expectation(std::string_view paulis, std::span<const Qubit> qubits) const;
 
+    // Entanglement entropy in bits of the reduced state of distinct, in-range `qubits`: rank over GF(2) of the
+    // stabilizer generators restricted to those qubits, minus their count (Fattal et al., 2004). O(k N^2 / 64) worst case.
+    std::size_t entanglement_entropy(std::span<const Qubit> qubits) const;
+
     // Stabilizer generators as signed strings: "+XZI" is +X on qubit 0, Z on qubit 1, I on qubit 2.
     std::vector<std::string> stabilizers() const;
 

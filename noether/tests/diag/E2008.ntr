@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E2008 5:1
+## CNOT needs an arrow between control and target
+qubits q[2]
+CNOT_{0,1}

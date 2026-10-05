@@ -1,0 +1,9 @@
+noether 0.1
+# expect: E7002 9:5
+# command: run
+# args: --timeout 0.001
+# exit: 4
+## a deep 16-qubit circuit cannot finish within a 1 ms budget
+qubits q[16]
+for k in 1..1000:
+    T_{q}

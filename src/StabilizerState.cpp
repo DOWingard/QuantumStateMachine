@@ -628,6 +628,49 @@ int StabilizerState::expectation(std::string_view paulis, std::span<const Qubit>
     return productSign(anti.data()) ? -1 : 1;
 }
 
+std::size_t StabilizerState::entanglement_entropy(std::span<const Qubit> qubits) const
+{
+    requireDistinct(n, qubits, "StabilizerState::entanglement_entropy");
+
+    // The generator matrix restricted to the queried qubits has, per qubit, an x and a z column
+    // of N bits: the stabilizer halves of xCol and zCol. Its rank is theirs, found by reducing
+    // them one at a time into an echelon basis keyed by lowest set bit. A basis row has no bits
+    // below its pivot, so eliminating it touches only the words from the pivot's on, and the
+    // sparse columns of structured states (GHZ, graph states) reduce in a few steps each.
+    constexpr std::size_t kNoRow = ~std::size_t{0};
+    std::vector<std::size_t> owner(n, kNoRow); // pivot bit -> basis row
+    std::vector<Word> basis;                    // `rank` rows of hw words, then a candidate slot
+    std::size_t rank = 0;
+    auto insert = [&](const Word* column)
+    {
+        basis.resize((rank + 1) * hw);
+        Word* v = basis.data() + rank * hw;
+        std::copy_n(column, hw, v);
+        for (std::size_t w = 0; w < hw;)
+        {
+            if (v[w] == 0)
+            {
+                ++w;
+                continue;
+            }
+            const std::size_t pivot = w * kWordBits + static_cast<std::size_t>(std::countr_zero(v[w]));
+            if (owner[pivot] == kNoRow)
+            {
+                owner[pivot] = rank++;
+                return;
+            }
+            const Word* row = basis.data() + owner[pivot] * hw;
+            for (std::size_t k = w; k < hw; ++k) v[k] ^= row[k];
+        }
+    };
+    for (const Qubit q : qubits)
+    {
+        insert(xCol(q) + hw);
+        insert(zCol(q) + hw);
+    }
+    return rank - qubits.size(); // rank >= k for every pure stabilizer state
+}
+
 std::vector<std::string> StabilizerState::stabilizers() const
 {
     std::vector<std::string> out(n, std::string(n + 1, 'I'));

@@ -1,0 +1,8 @@
+noether 0.1
+# expect: E8004 8:5
+# args: --spec {dir}/E8004.spec.ntr
+## on a line coupling, qubits 0 and 2 are not adjacent (no automatic SWAP insertion)
+def Algo_{q[3]}:
+    H_{q[0]}
+    CNOT_{q[0]->q[1]}
+    CNOT_{q[0]->q[2]}

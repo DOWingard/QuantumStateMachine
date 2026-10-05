@@ -1,0 +1,58 @@
+{
+  "asserts": [
+    {
+      "lhs": -8.999586295672245,
+      "line": 8,
+      "passed": true,
+      "rhs": -9,
+      "text": "⟨Ham⟩ ≈ -9 ± 1e-2",
+      "tol": 0.01
+    }
+  ],
+  "backend": "statevector",
+  "backendReason": "`exp` is not Clifford",
+  "diagnostics": [],
+  "formatted": false,
+  "lang": "0.1",
+  "ok": true,
+  "params": {},
+  "prints": [
+    {
+      "label": "energy",
+      "line": 7,
+      "stderr": null,
+      "text": "⟨Ham⟩",
+      "value": -8.999586295672245
+    },
+    {
+      "label": null,
+      "line": 7,
+      "stderr": null,
+      "text": "⟨Z_0⟩",
+      "value": 0.6408399739007917
+    },
+    {
+      "label": null,
+      "line": 7,
+      "stderr": null,
+      "text": "entropy(ρ_{q[0..4]})",
+      "value": 0.25533611366791276
+    }
+  ],
+  "resources": {
+    "clbits": 0,
+    "clifford": false,
+    "count2q": 1701,
+    "depth": 1901,
+    "depth2q": 1701,
+    "ops": 3601,
+    "peakBytes": 16384,
+    "qubits": 10,
+    "tcount": 0
+  },
+  "runs": [],
+  "schema": "noether.run/1",
+  "seed": 1,
+  "sourceSha256": "4b9441be910d404f249d64fcc3a8fdd9e1ac7882c796871cb8a69319bd112ae8",
+  "version": "0.1.0"
+}

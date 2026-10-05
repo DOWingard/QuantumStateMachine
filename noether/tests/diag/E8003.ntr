@@ -1,0 +1,7 @@
+noether 0.1
+# expect: E8003 7:5
+# args: --spec {dir}/E8003.spec.ntr
+## a pi/8 phase has no exact decomposition into {H, S, T}
+def Algo_{q[1]}:
+    H_{q[0]}
+    P(pi/8)_{q[0]}

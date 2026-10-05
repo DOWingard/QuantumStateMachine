@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E5004 5:1
+## a Hamiltonian with an imaginary coefficient is not Hermitian
+qubits q[1]
+trotter(i Z_0, 1.0, steps=10)

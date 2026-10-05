@@ -1,0 +1,60 @@
+{
+  "asserts": [
+    {
+      "lhs": 0.0074,
+      "line": 17,
+      "passed": true,
+      "rhs": 0.00725,
+      "text": "k[\"111\"]/10000 ≈ 0.00725 ± 0.0026",
+      "tol": 0.0026
+    }
+  ],
+  "backend": "stabilizer",
+  "backendReason": "every operation is Clifford",
+  "diagnostics": [],
+  "formatted": false,
+  "lang": "0.1",
+  "ok": true,
+  "params": {},
+  "prints": [
+    {
+      "label": "pL",
+      "line": 16,
+      "stderr": null,
+      "text": "k[\"111\"]/10000",
+      "value": 0.0074
+    }
+  ],
+  "resources": {
+    "clbits": 5,
+    "clifford": true,
+    "count2q": 2,
+    "depth": 5,
+    "depth2q": 2,
+    "ops": 11,
+    "peakBytes": 4,
+    "qubits": 3,
+    "tcount": 0
+  },
+  "runs": [
+    {
+      "counts": {
+        "00|000": 8590,
+        "01|000": 450,
+        "01|111": 31,
+        "10|000": 440,
+        "10|111": 15,
+        "11|000": 446,
+        "11|111": 28
+      },
+      "keys": "c0-leftmost",
+      "line": 14,
+      "name": "counts",
+      "shots": 10000
+    }
+  ],
+  "schema": "noether.run/1",
+  "seed": 1,
+  "sourceSha256": "08e54de8b7c836651eb49ea3970beb1901776b226abad7ecd97bcb9cdb07c918",
+  "version": "0.1.0"
+}

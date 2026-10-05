@@ -1,0 +1,4 @@
+noether 0.1
+def Algo_{q[2]}:
+    H_{q[0]}
+    CNOT_{q[0]->q[1]}

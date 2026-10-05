@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E8001 1:1
+# command: eval
+# args: --dir {dir}/E8001.ws
+# exit: 6
+## E8001.ws/spec.ntr was edited (its fidelity requirement loosened) after spec.lock froze it

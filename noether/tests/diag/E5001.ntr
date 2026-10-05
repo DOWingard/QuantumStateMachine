@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E5001 5:1
+## control and target are the same qubit (no-cloning)
+qubits q[2]
+CNOT_{0->0}

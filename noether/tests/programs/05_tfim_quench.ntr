@@ -1,0 +1,8 @@
+noether 0.1
+let N = 10, J = 1.0, g = 0.5, t = 2.0
+qubits q[N]
+let Ham = -J Σ_{j=0}^{N - 2} Z_j Z_{j + 1} - g Σ_{j=0}^{N - 1} X_j
+prepare |0⟩^⊗N
+trotter(Ham, t, steps=100, order=2)
+print ⟨Ham⟩ as energy, ⟨Z_0⟩, entropy(ρ_{q[0..4]})
+assert ⟨Ham⟩ ≈ -9 ± 1e-2  # energy conserved up to Trotter error

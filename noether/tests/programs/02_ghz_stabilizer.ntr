@@ -1,0 +1,14 @@
+noether 0.1
+backend stabilizer
+let N = 50000  # tableau ≈ N²/2 bytes ≈ 1.25 GB
+qubits q[N]; bits c[2]
+H_0
+for k ∈ 0..N - 2:
+    CNOT_{k→k + 1}
+print ⟨Z_0 Z_{N - 1}⟩, entropy(ρ_{q[0..N/2 - 1]})
+assert ⟨Z_0 Z_{N - 1}⟩ ≈ 1
+assert entropy(ρ_{q[0..N/2 - 1]}) ≈ 1
+c[0] ← measure Z_0
+c[1] ← measure Z_{N - 1}
+counts ← run 100
+assert counts["01"] + counts["10"] == 0

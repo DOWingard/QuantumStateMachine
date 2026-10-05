@@ -1,0 +1,5 @@
+noether 0.1
+# expect: W0001 5:4
+## `/` binds tighter than juxtaposition: 1/2pi is (1/2)*pi, not 1/(2pi)
+qubits q[1]
+Rz(1/2pi)_0

@@ -1,0 +1,57 @@
+noether 0.1
+## Entanglement swapping: qubits 0 and 3 never interact, yet end up in a Bell state.
+##
+## Start with two Bell pairs |Φ⁺⟩₀₁ ⊗ |Φ⁺⟩₂₃. A Bell-basis measurement on qubits 1 and 2
+## (CNOT, H, measure) projects 0 and 3 onto X^{m₂} Z^{m₁}|Φ⁺⟩₀₃; the Pauli correction
+## Z^{m₁} X^{m₂} on qubit 3 restores |Φ⁺⟩₀₃ for every outcome.
+##
+## Expected, exactly:
+##   before: ⟨Z₀Z₃⟩ = ⟨X₀X₃⟩ = 0 and ρ₀₃ = I/4, so S(ρ₀₃) = 2 bits (0 and 3 are uncorrelated);
+##   after:  ⟨Z₀Z₃⟩ = ⟨X₀X₃⟩ = 1, ⟨Y₀Y₃⟩ = −1, S(ρ₀₃) = 0 (pure) and S(ρ₀) = 1 (maximally entangled).
+## Sampled over 4000 shots each, the Z-basis and the X-basis readouts of qubits 0 and 3 always
+## agree (both bases correlated ⇒ the pair is |Φ⁺⟩, not a classical mixture), and the four Bell
+## outcomes m are uniform: 1000 ± 27 (1σ), asserted ±100.
+import "std/gates.ntr"
+qubits q[4]; bits m[2], out[2]; seed 21
+prepare |0000⟩
+Bell_{0,1}
+Bell_{2,3}
+print entropy(ρ_{q[0], q[3]}) as entropyBefore
+assert ⟨Z_0 Z_3⟩ ≈ 0 ± 1e-12
+assert ⟨X_0 X_3⟩ ≈ 0 ± 1e-12
+assert entropy(ρ_{q[0], q[3]}) ≈ 2 ± 1e-12
+Bell†_{1,2}
+m[0] ← measure Z_1
+m[1] ← measure Z_2
+if m[1]: X_3
+if m[0]: Z_3
+print ⟨Z_0 Z_3⟩ as zz, ⟨X_0 X_3⟩ as xx, ⟨Y_0 Y_3⟩ as yy
+print entropy(ρ_{q[0], q[3]}) as entropyAfter, entropy(ρ_{q[0]}) as entanglement
+assert ⟨Z_0 Z_3⟩ ≈ 1 ± 1e-12
+assert ⟨X_0 X_3⟩ ≈ 1 ± 1e-12
+assert ⟨Y_0 Y_3⟩ ≈ -1 ± 1e-12
+assert entropy(ρ_{q[0], q[3]}) ≈ 0 ± 1e-12
+assert entropy(ρ_{q[0]}) ≈ 1 ± 1e-12
+out[0] ← measure Z_0
+out[1] ← measure Z_3
+countsZ ← run 4000
+print marginal(countsZ, out) as zBasis, marginal(countsZ, m) as bellOutcomes
+assert marginal(countsZ, out)["00"] + marginal(countsZ, out)["11"] == 4000
+assert marginal(countsZ, m)["00"] ≈ 1000 ± 100
+assert marginal(countsZ, m)["01"] ≈ 1000 ± 100
+assert marginal(countsZ, m)["10"] ≈ 1000 ± 100
+assert marginal(countsZ, m)["11"] ≈ 1000 ± 100
+prepare |0000⟩
+Bell_{0,1}
+Bell_{2,3}
+Bell†_{1,2}
+m[0] ← measure Z_1
+m[1] ← measure Z_2
+if m[1]: X_3
+if m[0]: Z_3
+out[0] ← measure X_0
+out[1] ← measure X_3
+countsX ← run 4000
+print marginal(countsX, out) as xBasis
+assert marginal(countsX, out)["00"] + marginal(countsX, out)["11"] == 4000
+assert marginal(countsX, out)["00"] ≈ 2000 ± 100

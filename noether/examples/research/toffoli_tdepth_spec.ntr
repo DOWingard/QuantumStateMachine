@@ -1,0 +1,27 @@
+noether 0.1
+## Research task: the Toffoli gate over Clifford+T with the smallest T-depth.
+##
+## A candidate defines Toffoli3_{r[3]} (r[0], r[1] controls, r[2] target). It is lowered into
+## {H, S, S†, T, T†, CNOT} and must match Toffoli up to global phase (average gate fidelity
+## ≥ 0.999999). Objectives, in order: T-depth, then T-count, then CNOT count.
+## The goal T-depth ≤ 3 is the known optimum without ancillas (7 T gates). The textbook
+## decomposition reaches T-depth 4.
+##
+## Try it with
+##     noether check toffoli_tdepth_algo.ntr --spec toffoli_tdepth_spec.ntr
+##     noether eval --spec toffoli_tdepth_spec.ntr --candidate toffoli_tdepth_algo.ntr
+## or start an autoresearch workspace with
+##     noether research init toffoli --spec toffoli_tdepth_spec.ntr --from toffoli_tdepth_algo.ntr
+task "toffoli-tdepth"
+qubits q[3]
+candidate def Toffoli3_{q[3]}
+target unitary Toffoli_{q[0], q[1]→q[2]}
+gates {H, S, S†, T, T†, CNOT}
+coupling all
+readout exact
+require fidelity ≥ 0.999999
+minimize tdepth
+minimize tcount
+minimize count2q
+goal tdepth ≤ 3
+budget experiments=40, wall=30m

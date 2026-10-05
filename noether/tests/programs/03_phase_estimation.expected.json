@@ -1,0 +1,46 @@
+{
+  "asserts": [
+    {
+      "lhs": 1000,
+      "line": 21,
+      "passed": true,
+      "rhs": 1000,
+      "text": "counts[\"0101\"] == 1000",
+      "tol": null
+    }
+  ],
+  "backend": "statevector",
+  "backendReason": "`C_{1 control}(U)` is not Clifford",
+  "diagnostics": [],
+  "formatted": false,
+  "lang": "0.1",
+  "ok": true,
+  "params": {},
+  "prints": [],
+  "resources": {
+    "clbits": 4,
+    "clifford": false,
+    "count2q": 12,
+    "depth": 14,
+    "depth2q": 10,
+    "ops": 24,
+    "peakBytes": 512,
+    "qubits": 5,
+    "tcount": 0
+  },
+  "runs": [
+    {
+      "counts": {
+        "0101": 1000
+      },
+      "keys": "c0-leftmost",
+      "line": 20,
+      "name": "counts",
+      "shots": 1000
+    }
+  ],
+  "schema": "noether.run/1",
+  "seed": 3,
+  "sourceSha256": "4c1330717442f3a8b54f994d8f193fe83a532895d17f74eaf510cbf87818aebf",
+  "version": "0.1.0"
+}

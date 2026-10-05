@@ -1,0 +1,8 @@
+noether 0.1
+# expect: E7001 8:1
+# command: run
+# exit: 3
+## after H the expectation of Z is 0, not 1
+qubits q[1]
+H_0
+assert \expval{Z_0} ~= 1 +- 1e-9

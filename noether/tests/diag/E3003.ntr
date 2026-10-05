@@ -1,0 +1,7 @@
+noether 0.1
+# expect: E3003 6:5
+## bindings are immutable; the second let rebinds theta
+qubits q[1]
+let theta = pi/4
+let theta = pi/2
+Rz(theta)_0

@@ -1,0 +1,7 @@
+noether 0.1
+# expect: E6005 7:4
+## a product of seven independent clauses lowers to 2^7 = 128 disjoint cubes (limit 64)
+qubits q[14]
+bits c[14]
+c <- measure_q
+if (c[0] or c[1]) and (c[2] or c[3]) and (c[4] or c[5]) and (c[6] or c[7]) and (c[8] or c[9]) and (c[10] or c[11]) and (c[12] or c[13]): X_0

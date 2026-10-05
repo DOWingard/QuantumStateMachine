@@ -59,11 +59,12 @@ TEST(Backends, AutoSwitchesToTheTableauAboveTheStateVectorCutoff)
 TEST(Backends, StabilizerSupportListsTheCliffordOperations)
 {
     for (const OpKind k : {OpKind::X, OpKind::Y, OpKind::Z, OpKind::H, OpKind::S, OpKind::Sdg, OpKind::SX,
-                           OpKind::CNOT, OpKind::CZ, OpKind::Swap, OpKind::Measure, OpKind::Reset})
+                           OpKind::CNOT, OpKind::CZ, OpKind::Swap, OpKind::Measure, OpKind::Reset,
+                           OpKind::PauliChannel})
         EXPECT_TRUE(Qputer::stabilizerSupports(k)) << Qputer::opName(k);
     for (const OpKind k : {OpKind::T, OpKind::Tdg, OpKind::RX, OpKind::RY, OpKind::RZ, OpKind::Phase, OpKind::U3,
                            OpKind::CPhase, OpKind::Toffoli, OpKind::Fredkin, OpKind::MCX, OpKind::MCZ,
-                           OpKind::MCPhase, OpKind::Unitary})
+                           OpKind::MCPhase, OpKind::Unitary, OpKind::Kraus})
         EXPECT_FALSE(Qputer::stabilizerSupports(k)) << Qputer::opName(k);
 }
 

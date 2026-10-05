@@ -1,0 +1,21 @@
+noether 0.1
+## Quantum Fourier transform, Nielsen & Chuang convention (r[0] is the MSB).
+def QFT_{r[n]}:
+    for j ∈ 0..n - 1:
+        H_{r[j]}
+        for k ∈ j + 1..n - 1:
+            C_{r[k]}(P(π/2^(k - j))_{r[j]})
+    for j ∈ 0..floor(n/2) - 1:
+        SWAP_{r[j], r[n - 1 - j]}
+
+qubits a[4], t[1]; bits c[4]; seed 3
+let U = [[1, 0], [0, e^{2πi·0.3125}]]
+prepare |0000⟩ ⊗ |1⟩
+H_a
+## a[0] is the MSB of the phase register, so a[j] controls U^(2^(3-j)).
+for j ∈ 0..3:
+    C_{a[j]}(U^(2^(3 - j))_t)
+QFT†_a
+c ← measure_a
+counts ← run 1000
+assert counts["0101"] == 1000  # 0.3125 · 16 = 5

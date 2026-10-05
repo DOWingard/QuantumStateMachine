@@ -26,12 +26,13 @@ struct DenseGate
     std::vector<std::complex<double>> rowMajor;
 };
 
-// No validation: U must already be known unitary and 2^M x 2^M for M = targets.size(),
-// with 1 <= M <= QuantumGate::kMaxDenseTargets and all qubits distinct.
+// No validation: U must already be validated (unitary for a gate, one operator of a
+// trace-preserving set for a Kraus channel) and 2^M x 2^M for M = targets.size(), with
+// 1 <= M <= QuantumGate::kMaxDenseTargets and all qubits distinct.
 DenseGate prepareDense(std::span<const Qubit> controls, std::span<const Qubit> targets, const Eigen::MatrixXcd& U);
 
-// Skips the unitarity check; qubit indices are still checked against the state, which
-// is O(M) and allocation-free.
+// psi := U psi without checking unitarity, so it also applies a Kraus operator; qubit
+// indices are still checked against the state, which is O(M) and allocation-free.
 void applyDense(QuantumStateVector& state, const DenseGate& gate);
 
 } // namespace Qputer::detail

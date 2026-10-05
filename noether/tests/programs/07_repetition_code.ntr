@@ -1,0 +1,17 @@
+noether 0.1
+qubits d[3]; bits s[2], out[3]; seed 1
+## Measure both ZZ stabilizers and apply the decoded correction.
+proc Correct_{r[3]}:
+    s[0] ← measure Z_{r[0]} Z_{r[1]}
+    s[1] ← measure Z_{r[1]} Z_{r[2]}
+    if s[0] and ¬s[1]: X_{r[0]}
+    if s[0] and s[1]: X_{r[1]}
+    if ¬s[0] and s[1]: X_{r[2]}
+
+flip(0.05)_d
+Correct_d
+out ← measure_d
+counts ← run 10000
+let k = marginal(counts, out)
+print k["111"]/10000 as pL
+assert k["111"]/10000 ≈ 0.00725 ± 0.0026  # 3p²(1-p) + p³, 3σ at 10⁴ shots

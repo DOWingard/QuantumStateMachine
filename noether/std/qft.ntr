@@ -1,0 +1,17 @@
+noether 0.1
+## Quantum Fourier transform, Nielsen & Chuang convention: r[0] is the most significant bit.
+## QFT_{r}|x⟩ = 2^{-n/2} Σ_y e^{2πi·x·y/2^n} |y⟩. Use QFT†_r for the inverse.
+def QFT_{r[n]}:
+    for j in 0..n-1:
+        H_{r[j]}
+        for k in j+1..n-1:
+            C_{r[k]}(P(π/2^(k-j))_{r[j]})
+    for j in 0..floor(n/2)-1:
+        SWAP_{r[j], r[n-1-j]}
+
+## QFT without the final bit reversal: the output register is read in reverse order.
+def QFTNoSwap_{r[n]}:
+    for j in 0..n-1:
+        H_{r[j]}
+        for k in j+1..n-1:
+            C_{r[k]}(P(π/2^(k-j))_{r[j]})

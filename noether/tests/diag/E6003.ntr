@@ -1,0 +1,7 @@
+noether 0.1
+# expect: E6003 7:1
+## the state vector holds at most 25 qubits
+backend statevector
+qubits q[30]
+H_0
+T_0

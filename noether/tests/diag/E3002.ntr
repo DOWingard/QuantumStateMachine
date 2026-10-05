@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E3002 5:5
+## i is the imaginary unit and cannot be a loop variable
+qubits q[4]
+for i in 0..3:
+    H_i

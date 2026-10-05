@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E2007 6:8
+## |P(0) - 1/2| written with nested bars
+qubits q[1]
+H_0
+print ||<0|psi>|^2 - 0.5| as bias

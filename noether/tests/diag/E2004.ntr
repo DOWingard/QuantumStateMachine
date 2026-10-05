@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E2004 6:26
+## a tolerance needs an approximate comparison
+qubits q[1]
+prepare |0>
+assert \expval{Z_0} == 1 +- 1e-9

@@ -1,0 +1,12 @@
+noether 0.1
+# expect: E8006 9:1
+# command: eval
+# args: {dir}/E8006.cand.ntr
+# exit: 1
+## this file is the task spec: a state fidelity cannot be estimated from measurement shots
+task "bell-shots"
+qubits q[2]
+candidate def Algo_{q[2]}
+target state (|00> + |11>)/sqrt(2)
+readout shots(1000)
+require fidelity >= 0.99

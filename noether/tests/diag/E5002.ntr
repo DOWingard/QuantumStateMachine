@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E5002 5:15
+## both tensor factors act on qubit 0
+qubits q[2]
+print \expval{X_0 \otimes Z_0}

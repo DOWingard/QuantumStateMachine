@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E3005 5:5
+## snake_case name: `_` always means subscript, so this reads as a gate definition
+qubits q[1]
+let my_angle = pi/4

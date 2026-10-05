@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E5007 5:9
+## the Bell ket is missing its 1/sqrt(2) normalisation
+qubits q[2]
+prepare |00> + |11>

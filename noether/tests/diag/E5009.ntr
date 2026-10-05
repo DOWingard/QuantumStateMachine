@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E5009 6:1
+## a custom matrix needs an explicit support (U_0)
+qubits q[1]
+let U = [[0,1],[1,0]]
+U

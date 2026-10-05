@@ -1,0 +1,24 @@
+noether 0.1
+## Candidate for toffoli_tdepth_spec.ntr: a T-depth-3 Toffoli without ancillas.
+##
+## Toffoli = H_t · CCZ · H_t, and CCZ|abc⟩ = (−1)^{abc}|abc⟩ = ω^{4abc}|abc⟩ with ω = e^{iπ/4}.
+## Over the integers
+##     4abc = a + b + c − (a⊕b) − (a⊕c) − (b⊕c) + (a⊕b⊕c),
+## so CCZ is seven T / T† phases, each on one wire while that wire holds the parity it needs.
+## CNOTs move the wires through (a, b, c) → (a⊕b⊕c, a⊕b, a⊕c) → (a⊕b⊕c, a⊕b, b⊕c) and back.
+## The first two layers apply three phases at once, the last applies one: T-depth 3, T-count 7,
+## 8 CNOTs.
+##
+## Expected from `noether eval`: feasible, goal met, fidelity 1,
+## tdepth 3, tcount 7, count2q 8 (the textbook circuit has tdepth 4, tcount 7, count2q 6).
+def CCZ_{r[3]}:
+    T_{r[0]}; T_{r[1]}; T_{r[2]}
+    CNOT_{r[0]→r[1]}; CNOT_{r[0]→r[2]}; CNOT_{r[1]→r[0]}; CNOT_{r[2]→r[0]}
+    T_{r[0]}; T†_{r[1]}; T†_{r[2]}
+    CNOT_{r[1]→r[2]}
+    T†_{r[2]}
+    CNOT_{r[2]→r[0]}; CNOT_{r[0]→r[1]}; CNOT_{r[1]→r[2]}
+def Toffoli3_{r[3]}:
+    H_{r[2]}
+    CCZ_r
+    H_{r[2]}

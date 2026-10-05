@@ -1,0 +1,46 @@
+noether 0.1
+## Three-qubit bit-flip repetition code: encode, independent bit-flip noise, Pauli parity
+## (Z Z) syndrome measurement, feed-forward correction.
+##
+## Each data qubit suffers X with probability p = 0.1. The syndromes Z₀Z₁ and Z₁Z₂ locate any
+## single flip, so correction fails only when two or three qubits flip:
+##     P_L = 3p²(1 − p) + p³ = 0.028,   versus p = 0.1 for an unprotected qubit.
+## Single-flip syndromes (01, 10, 11) each occur with p(1−p)² + p²(1−p) = 0.09.
+##
+## Part 1 stores |0_L⟩ = |000⟩ next to a bare qubit and samples 20 000 shots:
+##     logical flips 20000·0.028 = 560 ± 23 (1σ), bare flips 2000 ± 42, syndrome 01: 1800 ± 40.
+## The asserts allow ±75, ±130 and ±125 (> 3σ).
+## Part 2 protects a superposition |ψ⟩ = Ry(θ)|0⟩, θ = π/3. A logical error maps ψ to Xψ, so
+## after decoding ⟨Z⟩ = (1 − 2P_L) cos θ = 0.472, averaged over 4000 noise trajectories
+## (per-trajectory spread 2 cos θ √(P_L(1−P_L)) = 0.165, so σ of the mean is 0.0026); the
+## assert allows ±0.008 (3σ), which the runtime widens by a further 2·stderr.
+let p = 0.1, θ = π/3, pL = 3p^2 (1 - p) + p^3
+qubits d[3], bare[1]; bits s[2], logical[1], bareOut[1]; seed 2024; trajectories 4000
+def Encode_{r[3]}: CNOT_{r[0]→r[2]} CNOT_{r[0]→r[1]}
+proc Correct_{r[3]}:
+    s[0] ← measure Z_{r[0]} Z_{r[1]}
+    s[1] ← measure Z_{r[1]} Z_{r[2]}
+    if s[0] and ¬s[1]: X_{r[0]}
+    if s[0] and s[1]: X_{r[1]}
+    if ¬s[0] and s[1]: X_{r[2]}
+prepare |0000⟩
+Encode_d
+flip(p)_d
+flip(p)_bare
+Correct_d
+logical[0] ← measure Z_{d[0]}
+bareOut[0] ← measure Z_{bare[0]}
+counts ← run 20000
+print marginal(counts, logical) as logicalCounts, marginal(counts, bareOut) as bareCounts
+print marginal(counts, s) as syndromes
+assert marginal(counts, logical)["1"] ≈ 20000pL ± 75
+assert marginal(counts, bareOut)["1"] ≈ 20000p ± 130
+assert marginal(counts, s)["01"] ≈ 20000 (p (1 - p)^2 + p^2 (1 - p)) ± 125
+prepare |0000⟩
+Ry(θ)_{d[0]}
+Encode_d
+flip(p)_d
+Correct_d
+Encode†_d
+print ⟨Z_{d[0]}⟩ as decodedZ
+assert ⟨Z_{d[0]}⟩ ≈ (1 - 2pL) cos(θ) ± 0.008

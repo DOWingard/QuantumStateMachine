@@ -1,0 +1,8 @@
+noether 0.1
+# expect: E8002 5:1
+# args: --spec {dir}/E8002.spec.ntr
+## a candidate may only define things; the registers belong to the spec
+qubits q[2]
+def Algo_{q[2]}:
+    H_{q[0]}
+    CNOT_{q[0]->q[1]}

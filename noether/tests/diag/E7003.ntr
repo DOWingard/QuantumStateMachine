@@ -1,0 +1,9 @@
+noether 0.1
+# expect: E7003 9:5
+# command: run
+# exit: 5
+## a matrix that passes the unitarity tolerance (1e-12 * dim) still drifts the norm when applied 1e5 times
+qubits q[1]
+let U = [[1.0000000000005, 0], [0, 1]]
+for k in 1..100000:
+    U_0

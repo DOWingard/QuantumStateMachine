@@ -1,0 +1,307 @@
+// Single source for every spelling the lexer accepts and the formatter emits. The lexer alias
+// maps, the formatter's canonical and ASCII output, `noether tokens`, and the cheat sheet in the
+// generated agent skills are all built from these tables, so they cannot drift apart.
+//
+// Include after defining the macros you need; undefined ones expand to nothing.
+//
+// Every LaTeX command is typed with exactly one backslash (`\dagger`). In the C++ string literals
+// below "\\" is the escape for that single character; NTR_LATEX_* entries hold the bare command
+// name and the lexer supplies the backslash. `\\` in source is a LaTeX line break and is rejected.
+
+#ifndef NTR_PUNCT
+#define NTR_PUNCT(Name, canonical, ascii)
+#endif
+#ifndef NTR_KEYWORD
+#define NTR_KEYWORD(Name, text)
+#endif
+#ifndef NTR_ASCII_OP
+#define NTR_ASCII_OP(text, Name)
+#endif
+#ifndef NTR_UNICODE_ALT
+#define NTR_UNICODE_ALT(text, Name)
+#endif
+#ifndef NTR_LATEX_TOK
+#define NTR_LATEX_TOK(command, Name)
+#endif
+#ifndef NTR_LATEX_IDENT
+#define NTR_LATEX_IDENT(command, ident)
+#endif
+#ifndef NTR_LATEX_LAYOUT
+#define NTR_LATEX_LAYOUT(command)
+#endif
+#ifndef NTR_GREEK
+#define NTR_GREEK(word, letter)
+#endif
+#ifndef NTR_GATE_ALIAS
+#define NTR_GATE_ALIAS(alias, canonical, dagger)
+#endif
+#ifndef NTR_GATE
+#define NTR_GATE(name, roles, params, clifford, meaning)
+#endif
+#ifndef NTR_FUNC
+#define NTR_FUNC(name, meaning)
+#endif
+#ifndef NTR_CHANNEL
+#define NTR_CHANNEL(name, arity, params, pauli, meaning)
+#endif
+
+
+// ---- Operators and punctuation: canonical (Unicode) and ASCII-canonical spellings ----
+NTR_PUNCT(Underscore, "_", "_")
+NTR_PUNCT(Caret, "^", "^")
+NTR_PUNCT(TensorPow, "^⊗", "^{\\otimes}")
+NTR_PUNCT(Dagger, "†", "\\dagger")
+NTR_PUNCT(LParen, "(", "(")
+NTR_PUNCT(RParen, ")", ")")
+NTR_PUNCT(LBracket, "[", "[")
+NTR_PUNCT(RBracket, "]", "]")
+NTR_PUNCT(LBrace, "{", "{")
+NTR_PUNCT(RBrace, "}", "}")
+NTR_PUNCT(Comma, ",", ",")
+NTR_PUNCT(Semicolon, ";", ";")
+NTR_PUNCT(Colon, ":", ":")
+NTR_PUNCT(DotDot, "..", "..")
+NTR_PUNCT(Assign, "=", "=")
+NTR_PUNCT(LeftArrow, "←", "<-")
+NTR_PUNCT(Arrow, "→", "->")
+NTR_PUNCT(Otimes, "⊗", "\\otimes")
+NTR_PUNCT(Plus, "+", "+")
+NTR_PUNCT(Minus, "-", "-")
+NTR_PUNCT(Cdot, "·", "*")
+NTR_PUNCT(Slash, "/", "/")
+NTR_PUNCT(Sqrt, "√", "sqrt")
+NTR_PUNCT(Sum, "Σ", "\\sum")
+NTR_PUNCT(Prod, "∏", "\\prod")
+NTR_PUNCT(Not, "¬", "not")
+NTR_PUNCT(EqEq, "==", "==")
+NTR_PUNCT(NotEq, "≠", "!=")
+NTR_PUNCT(Less, "<", "<")
+NTR_PUNCT(LessEq, "≤", "<=")
+NTR_PUNCT(Greater, ">", ">")
+NTR_PUNCT(GreaterEq, "≥", ">=")
+NTR_PUNCT(Approx, "≈", "~=")
+NTR_PUNCT(PlusMinus, "±", "+-")
+NTR_PUNCT(In, "∈", "in")
+NTR_PUNCT(LAngle, "⟨", "\\expval{")
+NTR_PUNCT(RAngle, "⟩", "}")
+NTR_PUNCT(Abs, "|", "|")
+NTR_PUNCT(Dot, ".", ".")
+
+
+// ---- Keywords (`not` and `in` are the operator tokens ¬ and ∈) ----
+NTR_KEYWORD(KwNoether, "noether")
+NTR_KEYWORD(KwQubits, "qubits")
+NTR_KEYWORD(KwBits, "bits")
+NTR_KEYWORD(KwSeed, "seed")
+NTR_KEYWORD(KwBackend, "backend")
+NTR_KEYWORD(KwTrajectories, "trajectories")
+NTR_KEYWORD(KwLet, "let")
+NTR_KEYWORD(KwParam, "param")
+NTR_KEYWORD(KwDef, "def")
+NTR_KEYWORD(KwProc, "proc")
+NTR_KEYWORD(KwPrepare, "prepare")
+NTR_KEYWORD(KwMeasure, "measure")
+NTR_KEYWORD(KwReset, "reset")
+NTR_KEYWORD(KwPrint, "print")
+NTR_KEYWORD(KwAs, "as")
+NTR_KEYWORD(KwAssert, "assert")
+NTR_KEYWORD(KwRun, "run")
+NTR_KEYWORD(KwImport, "import")
+NTR_KEYWORD(KwFor, "for")
+NTR_KEYWORD(KwBy, "by")
+NTR_KEYWORD(KwIf, "if")
+NTR_KEYWORD(KwElse, "else")
+NTR_KEYWORD(KwAnd, "and")
+NTR_KEYWORD(KwOr, "or")
+NTR_KEYWORD(KwNoise, "noise")
+NTR_KEYWORD(KwAfter, "after")
+NTR_KEYWORD(KwBefore, "before")
+NTR_KEYWORD(KwTrue, "true")
+NTR_KEYWORD(KwFalse, "false")
+
+
+// ---- Plain-ASCII operator spellings ----
+NTR_ASCII_OP("->", Arrow)
+NTR_ASCII_OP("<-", LeftArrow)
+NTR_ASCII_OP("*", Cdot)
+NTR_ASCII_OP("~=", Approx)
+NTR_ASCII_OP("+-", PlusMinus)
+NTR_ASCII_OP("<=", LessEq)
+NTR_ASCII_OP(">=", GreaterEq)
+NTR_ASCII_OP("!=", NotEq)
+NTR_ASCII_OP("==", EqEq)
+NTR_ASCII_OP("not", Not)
+NTR_ASCII_OP("in", In)
+NTR_ASCII_OP("sqrt", Sqrt)
+
+
+// ---- Unicode alternatives that normalise to a canonical token ----
+NTR_UNICODE_ALT("∑", Sum)
+NTR_UNICODE_ALT("×", Cdot)
+NTR_UNICODE_ALT("⋅", Cdot)
+NTR_UNICODE_ALT("−", Minus)
+NTR_UNICODE_ALT("⟶", Arrow)
+NTR_UNICODE_ALT("⟵", LeftArrow)
+
+
+// ---- LaTeX commands that are tokens ----
+NTR_LATEX_TOK("dagger", Dagger)
+NTR_LATEX_TOK("otimes", Otimes)
+NTR_LATEX_TOK("to", Arrow)
+NTR_LATEX_TOK("rightarrow", Arrow)
+NTR_LATEX_TOK("leftarrow", LeftArrow)
+NTR_LATEX_TOK("gets", LeftArrow)
+NTR_LATEX_TOK("neg", Not)
+NTR_LATEX_TOK("lnot", Not)
+NTR_LATEX_TOK("cdot", Cdot)
+NTR_LATEX_TOK("times", Cdot)
+NTR_LATEX_TOK("approx", Approx)
+NTR_LATEX_TOK("pm", PlusMinus)
+NTR_LATEX_TOK("le", LessEq)
+NTR_LATEX_TOK("leq", LessEq)
+NTR_LATEX_TOK("ge", GreaterEq)
+NTR_LATEX_TOK("geq", GreaterEq)
+NTR_LATEX_TOK("ne", NotEq)
+NTR_LATEX_TOK("neq", NotEq)
+NTR_LATEX_TOK("in", In)
+NTR_LATEX_TOK("sum", Sum)
+NTR_LATEX_TOK("prod", Prod)
+NTR_LATEX_TOK("langle", LAngle)
+NTR_LATEX_TOK("rangle", RAngle)
+
+// LaTeX commands that are identifiers (Greek letters are added from NTR_GREEK)
+NTR_LATEX_IDENT("varphi", "φ")
+NTR_LATEX_IDENT("vartheta", "θ")
+NTR_LATEX_IDENT("varepsilon", "ε")
+NTR_LATEX_IDENT("sin", "sin")
+NTR_LATEX_IDENT("cos", "cos")
+NTR_LATEX_IDENT("tan", "tan")
+NTR_LATEX_IDENT("exp", "exp")
+NTR_LATEX_IDENT("log", "log")
+NTR_LATEX_IDENT("ln", "log")
+
+// LaTeX commands that only lay out text and are dropped
+NTR_LATEX_LAYOUT(",")
+NTR_LATEX_LAYOUT(";")
+NTR_LATEX_LAYOUT("!")
+NTR_LATEX_LAYOUT(":")
+NTR_LATEX_LAYOUT("quad")
+NTR_LATEX_LAYOUT("qquad")
+NTR_LATEX_LAYOUT("left")
+NTR_LATEX_LAYOUT("right")
+
+
+// ---- Greek letters: the ASCII word and \word both spell the letter ----
+NTR_GREEK("alpha", "α")
+NTR_GREEK("beta", "β")
+NTR_GREEK("gamma", "γ")
+NTR_GREEK("delta", "δ")
+NTR_GREEK("epsilon", "ε")
+NTR_GREEK("zeta", "ζ")
+NTR_GREEK("eta", "η")
+NTR_GREEK("theta", "θ")
+NTR_GREEK("iota", "ι")
+NTR_GREEK("kappa", "κ")
+NTR_GREEK("lambda", "λ")
+NTR_GREEK("mu", "μ")
+NTR_GREEK("nu", "ν")
+NTR_GREEK("xi", "ξ")
+NTR_GREEK("pi", "π")
+NTR_GREEK("rho", "ρ")
+NTR_GREEK("sigma", "σ")
+NTR_GREEK("tau", "τ")
+NTR_GREEK("upsilon", "υ")
+NTR_GREEK("phi", "φ")
+NTR_GREEK("chi", "χ")
+NTR_GREEK("psi", "ψ")
+NTR_GREEK("omega", "ω")
+NTR_GREEK("Gamma", "Γ")
+NTR_GREEK("Delta", "Δ")
+NTR_GREEK("Theta", "Θ")
+NTR_GREEK("Lambda", "Λ")
+NTR_GREEK("Xi", "Ξ")
+NTR_GREEK("Pi", "Π")
+NTR_GREEK("Upsilon", "Υ")
+NTR_GREEK("Phi", "Φ")
+NTR_GREEK("Psi", "Ψ")
+NTR_GREEK("Omega", "Ω")
+
+
+// ---- Gate aliases, rewritten to the canonical gate by the formatter ----
+NTR_GATE_ALIAS("Sdg", "S", true)
+NTR_GATE_ALIAS("Tdg", "T", true)
+NTR_GATE_ALIAS("SX", "√X", false)
+NTR_GATE_ALIAS("RX", "Rx", false)
+NTR_GATE_ALIAS("RY", "Ry", false)
+NTR_GATE_ALIAS("RZ", "Rz", false)
+NTR_GATE_ALIAS("Phase", "P", false)
+NTR_GATE_ALIAS("CX", "CNOT", false)
+NTR_GATE_ALIAS("CPhase", "CP", false)
+NTR_GATE_ALIAS("CCX", "Toffoli", false)
+NTR_GATE_ALIAS("CSWAP", "Fredkin", false)
+
+
+// ---- Built-in gates. roles: slot layout of the subscript; "1" = one qubit, ">" = the arrow ----
+NTR_GATE("I", "1", 0, "yes", "identity")
+NTR_GATE("X", "1", 0, "yes", "Pauli X")
+NTR_GATE("Y", "1", 0, "yes", "Pauli Y")
+NTR_GATE("Z", "1", 0, "yes", "Pauli Z")
+NTR_GATE("H", "1", 0, "yes", "Hadamard")
+NTR_GATE("S", "1", 0, "yes", "diag(1, i); S† is its adjoint")
+NTR_GATE("T", "1", 0, "no", "diag(1, e^{iπ/4}); T† is its adjoint")
+NTR_GATE("Rx", "1", 1, "θ ∈ (π/2)ℤ", "exp(-iθX/2)")
+NTR_GATE("Ry", "1", 1, "θ ∈ (π/2)ℤ", "exp(-iθY/2)")
+NTR_GATE("Rz", "1", 1, "θ ∈ (π/2)ℤ", "exp(-iθZ/2)")
+NTR_GATE("P", "1", 1, "λ ∈ (π/2)ℤ", "diag(1, e^{iλ})")
+NTR_GATE("U3", "1", 3, "all ∈ (π/2)ℤ", "[[cos(θ/2), -e^{iλ}sin(θ/2)], [e^{iφ}sin(θ/2), e^{i(φ+λ)}cos(θ/2)]]")
+NTR_GATE("CNOT", "c>t", 0, "yes", "controlled X")
+NTR_GATE("CZ", "a,b", 0, "yes", "controlled Z")
+NTR_GATE("CP", "a,b", 1, "λ ∈ πℤ", "controlled phase diag(1, 1, 1, e^{iλ})")
+NTR_GATE("SWAP", "a,b", 0, "yes", "swap two qubits")
+NTR_GATE("Toffoli", "c,c>t", 0, "no", "doubly controlled X")
+NTR_GATE("Fredkin", "c>a,b", 0, "no", "controlled SWAP")
+NTR_GATE("C", "controls", 0, "C_{c}(X|Y|Z) only", "C_{ctrls}(U): U controlled on ctrls; ¬c is a negative control")
+
+
+// ---- Built-in functions ----
+NTR_FUNC("sin", "sine")
+NTR_FUNC("cos", "cosine")
+NTR_FUNC("tan", "tangent")
+NTR_FUNC("exp", "exponential; on -i·r·(commuting Pauli sum) a unitary")
+NTR_FUNC("log", "natural logarithm")
+NTR_FUNC("sqrt", "square root (canonical √)")
+NTR_FUNC("abs", "absolute value / modulus")
+NTR_FUNC("floor", "floor, returns Int")
+NTR_FUNC("ceil", "ceiling, returns Int")
+NTR_FUNC("min", "minimum of its arguments")
+NTR_FUNC("max", "maximum of its arguments")
+NTR_FUNC("trotter", "trotter(Ham, t, steps=n, order=1|2|4): product formula for exp(-i t Ham)")
+NTR_FUNC("entropy", "entropy(ρ_A): von Neumann entropy in bits")
+NTR_FUNC("fidelity", "fidelity(|φ⟩) = |⟨φ|ψ⟩|² against the live state")
+NTR_FUNC("marginal", "marginal(counts, reg): counts restricted to one bit register")
+NTR_FUNC("count", "count(G): number of G gates recorded so far")
+NTR_FUNC("depth", "depth(): circuit depth recorded so far")
+
+
+// ---- Noise channels ----
+NTR_CHANNEL("depolarize", 1, 1, true, "X, Y, Z each with probability p/3")
+NTR_CHANNEL("depolarize2", 2, 1, true, "each of the 15 non-identity 2-qubit Paulis with probability p/15")
+NTR_CHANNEL("dephase", 1, 1, true, "Z with probability p")
+NTR_CHANNEL("flip", 1, 1, true, "X with probability p")
+NTR_CHANNEL("pauli", 1, 3, true, "pauli(px, py, pz): X, Y, Z with the given probabilities")
+NTR_CHANNEL("ampdamp", 1, 1, false, "amplitude damping with decay probability γ (state vector only)")
+NTR_CHANNEL("kraus", 0, 1, false, "kraus([K1, …]): general channel, completeness checked (state vector only)")
+
+
+#undef NTR_PUNCT
+#undef NTR_KEYWORD
+#undef NTR_ASCII_OP
+#undef NTR_UNICODE_ALT
+#undef NTR_LATEX_TOK
+#undef NTR_LATEX_IDENT
+#undef NTR_LATEX_LAYOUT
+#undef NTR_GREEK
+#undef NTR_GATE_ALIAS
+#undef NTR_GATE
+#undef NTR_FUNC
+#undef NTR_CHANNEL

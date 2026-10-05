@@ -1,0 +1,8 @@
+noether 0.1
+# expect: E6004 7:8
+# command: run
+# args: --max-mem 1K
+# exit: 4
+## a 10-qubit state vector needs 16 KiB, over the 1 KiB memory limit
+qubits q[10]
+T_0

@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E2009 6:1
+# exit: 1
+## Qiskit method-call spelling instead of CNOT_{0->1}
+qubits q[2]
+qc.cx(0, 1)

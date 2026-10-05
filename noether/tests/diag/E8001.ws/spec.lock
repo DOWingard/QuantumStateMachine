@@ -1,0 +1,8 @@
+{
+  "createdAt": "2026-10-04T07:06:36Z",
+  "createdUnix": 1791097596,
+  "noetherVersion": "0.1.0",
+  "rulesVersion": 1,
+  "schema": "noether.lock/1",
+  "specSha256": "33da4ac2320d2aa3269f9d9b4a2a5428a6f35f50d69322cb644bc323ad92c203"
+}

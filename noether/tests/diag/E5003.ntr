@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E5003 5:1
+## 2 X_0 is not unitary (coefficient modulus 2)
+qubits q[1]
+2 X_0

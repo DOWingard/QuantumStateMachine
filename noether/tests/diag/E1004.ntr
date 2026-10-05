@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E1004 5:5
+## misspelt layout command (\quad)
+qubits q[1]
+H_0 \qaud X_0

@@ -1,0 +1,18 @@
+noether 0.1
+## Two-qubit Pauli rotations exp(-i θ/2 P⊗P).
+def Rxx(θ)_{a,b}: exp(-i θ/2 X_a X_b)
+def Ryy(θ)_{a,b}: exp(-i θ/2 Y_a Y_b)
+def Rzz(θ)_{a,b}: exp(-i θ/2 Z_a Z_b)
+
+## Bell pair (|00⟩ + |11⟩)/√2 from |00⟩.
+def Bell_{a,b}: CNOT_{a→b} H_a
+
+## GHZ state on a register from |0…0⟩.
+def GHZ_{r[n]}:
+    H_{r[0]}
+    for k in 0..n-2:
+        CNOT_{r[k]→r[k+1]}
+
+## Controlled-Y and iSWAP.
+def CY_{c→t}: C_{c}(Y_t)
+def ISWAP_{a,b}: exp(i π/4 (X_a X_b + Y_a Y_b))

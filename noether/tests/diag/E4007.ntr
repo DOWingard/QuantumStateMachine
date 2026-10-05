@@ -1,0 +1,5 @@
+noether 0.1
+# expect: E4007 5:7
+## 2^64 overflows int64 under constant folding
+let n = 64
+print 2^n as dim

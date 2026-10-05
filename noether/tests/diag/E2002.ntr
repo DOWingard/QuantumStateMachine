@@ -1,0 +1,7 @@
+noether 0.1
+# expect: E2002 7:3
+## the last line dedents to a column no enclosing block uses
+qubits q[2]
+for k in 0..1:
+    H_k
+  X_0

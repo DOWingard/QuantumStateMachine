@@ -1,0 +1,28 @@
+noether 0.1
+## Quantum phase estimation (QPE) of U = P(2πφ) on its eigenstate |1⟩, U|1⟩ = e^{2πiφ}|1⟩.
+##
+## φ = 11/16 = 0.1011₂ has an exact 4-bit binary expansion, so 4 counting qubits read it out
+## with certainty. std/qft.ntr follows Nielsen & Chuang (a[0] is the most significant bit), so
+## counting qubit a[j] controls U^(2^(n-1-j)). After the controlled powers the counting register
+## holds 2^{-n/2} Σ_y e^{2πi φ y}|y⟩ = QFT|2^n φ⟩ = QFT|11⟩, and QFT† returns |11⟩ = |1011⟩.
+##
+## Expected, exactly: P(a = 1011) = 1, the target stays in |1⟩ (⟨Z_t⟩ = -1), and every one of
+## the 1000 shots reads 1011. For a φ without an exact n-bit expansion the peak probability
+## would instead be |sin(π 2^n δ) / (2^n sin(π δ))|² with δ the distance to the nearest grid
+## point.
+import "std/qft.ntr"
+let n = 4, phase = 11/16
+def U_t: P(2πphase)_t
+qubits a[n], t[1]; bits c[n]; seed 3
+prepare |00001⟩
+H_a
+for j ∈ 0..n - 1:
+    C_{a[j]}(U^(2^(n - 1 - j))_{t[0]})
+QFT†_a
+print |⟨10111|ψ⟩|^2 as pPeak, ⟨Z_{t[0]}⟩ as targetZ
+assert |⟨10111|ψ⟩|^2 ≈ 1 ± 1e-9
+assert ⟨Z_{t[0]}⟩ ≈ -1 ± 1e-9
+c ← measure_a
+counts ← run 1000
+print counts
+assert counts["1011"] == 1000

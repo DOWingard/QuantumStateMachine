@@ -1,0 +1,16 @@
+noether 0.1
+## Draper adder in Fourier space: |x⟩ → |x + k mod 2^n⟩ on a register already in Fourier space
+## (apply QFT first, QFT† after). r[0] is the most significant bit.
+def PhaseAdd(k)_{r[n]}:
+    for j in 0..n-1:
+        P(2π k / 2^(n-j))_{r[j]}
+
+## |x⟩ → |x + 1 mod 2^n⟩ by a ripple of multi-controlled X gates, r[0] the most significant bit.
+def Increment_{r[n]}:
+    for j in 0..n-2:
+        C_{r[j+1..n-1]}(X_{r[j]})
+    X_{r[n-1]}
+
+## Majority and unmajority blocks of the Cuccaro ripple-carry adder.
+def Maj_{c,b,a}: Toffoli_{c,b→a} CNOT_{a→c} CNOT_{a→b}
+def Uma_{c,b,a}: CNOT_{c→b} CNOT_{a→c} Toffoli_{c,b→a}

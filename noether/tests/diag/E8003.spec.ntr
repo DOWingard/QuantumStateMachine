@@ -1,0 +1,7 @@
+noether 0.1
+task "pi8-phase"
+qubits q[1]
+candidate def Algo_{q[1]}
+target state (|0> + exp(i pi/8) |1>)/sqrt(2)
+gates {H, S, T}
+require fidelity >= 1 - 1e-9

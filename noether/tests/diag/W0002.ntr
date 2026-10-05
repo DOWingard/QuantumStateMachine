@@ -1,0 +1,6 @@
+noether 0.1
+# expect: W0002 6:4
+## a numerically derived angle that is pi/4 up to rounding
+qubits q[1]
+let theta = sqrt(0.61685)
+Rz(theta)_0

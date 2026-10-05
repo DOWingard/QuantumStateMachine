@@ -1,0 +1,78 @@
+{
+  "asserts": [
+    {
+      "lhs": 1.0,
+      "line": 9,
+      "passed": true,
+      "rhs": 1,
+      "text": "⟨Z_0 Z_{N - 1}⟩ ≈ 1",
+      "tol": 1e-09
+    },
+    {
+      "lhs": 1.0,
+      "line": 10,
+      "passed": true,
+      "rhs": 1,
+      "text": "entropy(ρ_{q[0..N/2 - 1]}) ≈ 1",
+      "tol": 1e-09
+    },
+    {
+      "lhs": 0,
+      "line": 14,
+      "passed": true,
+      "rhs": 0,
+      "text": "counts[\"01\"] + counts[\"10\"] == 0",
+      "tol": null
+    }
+  ],
+  "backend": "stabilizer",
+  "backendReason": "requested",
+  "diagnostics": [],
+  "formatted": false,
+  "lang": "0.1",
+  "ok": true,
+  "params": {},
+  "prints": [
+    {
+      "label": null,
+      "line": 8,
+      "stderr": null,
+      "text": "⟨Z_0 Z_{N - 1}⟩",
+      "value": 1.0
+    },
+    {
+      "label": null,
+      "line": 8,
+      "stderr": null,
+      "text": "entropy(ρ_{q[0..N/2 - 1]})",
+      "value": 1.0
+    }
+  ],
+  "resources": {
+    "clbits": 2,
+    "clifford": true,
+    "count2q": 49999,
+    "depth": 50001,
+    "depth2q": 49999,
+    "ops": 50002,
+    "peakBytes": 1250000000,
+    "qubits": 50000,
+    "tcount": 0
+  },
+  "runs": [
+    {
+      "counts": {
+        "00": 44,
+        "11": 56
+      },
+      "keys": "c0-leftmost",
+      "line": 13,
+      "name": "counts",
+      "shots": 100
+    }
+  ],
+  "schema": "noether.run/1",
+  "seed": 1,
+  "sourceSha256": "21423d81839ed876f7e04e64b8dcb9a7b45b467ec78cca5708e0306bee156722",
+  "version": "0.1.0"
+}

@@ -1,0 +1,37 @@
+noether 0.1
+## Superdense coding: two classical bits sent by transmitting one qubit of a shared Bell pair.
+##
+## Alice and Bob share |Φ⁺⟩ = (|00⟩ + |11⟩)/√2. To send m = (b₀, b₁) Alice applies Z^{b₀}, then
+## X^{b₁}, to her qubit, giving one of the four orthogonal Bell states
+##     (00) |Φ⁺⟩,  (01) |Ψ⁺⟩,  (10) |Φ⁻⟩,  (11) |Ψ⁻⟩   (up to sign).
+## Bob undoes the Bell preparation (CNOT, then H) and reads b₀ b₁ off the computational basis.
+##
+## Expected, exactly: for message m, ⟨Z₀⟩ = (−1)^{b₀} and ⟨Z₁⟩ = (−1)^{b₁} (a compile-time loop
+## checks all four). With messages drawn by two quantum coins, every one of 4000 shots decodes
+## correctly (out = msg), and each message appears 1000 ± 27 times (1σ), asserted ±100.
+import "std/gates.ntr"
+qubits q[2], coin[2]; bits msg[2], out[2]; seed 4
+for m ∈ 0..3:
+    prepare |0000⟩
+    Bell_{0,1}
+    if floor(m/2) == 1: Z_0
+    if m - 2 floor(m/2) == 1: X_0
+    Bell†_{0,1}
+    print m as message, ⟨Z_0⟩ as z0, ⟨Z_1⟩ as z1
+    assert ⟨Z_0⟩ ≈ 1 - 2 floor(m/2) ± 1e-12
+    assert ⟨Z_1⟩ ≈ 1 - 2 (m - 2 floor(m/2)) ± 1e-12
+prepare |0000⟩
+Bell_{0,1}
+H_coin
+msg ← measure_coin
+if msg[0]: Z_0
+if msg[1]: X_0
+Bell†_{0,1}
+out ← measure_q
+counts ← run 4000
+print counts
+assert counts["00|00"] + counts["01|01"] + counts["10|10"] + counts["11|11"] == 4000
+assert counts["00|00"] ≈ 1000 ± 100
+assert counts["01|01"] ≈ 1000 ± 100
+assert counts["10|10"] ≈ 1000 ± 100
+assert counts["11|11"] ≈ 1000 ± 100

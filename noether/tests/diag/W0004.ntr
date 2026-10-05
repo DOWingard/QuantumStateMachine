@@ -1,0 +1,6 @@
+noether 0.1
+# expect: W0004 5:5
+## theta is bound but never used
+qubits q[1]
+let theta = pi/4
+H_0

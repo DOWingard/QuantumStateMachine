@@ -1,0 +1,8 @@
+noether 0.1
+# expect: E6002 8:7
+## fidelity against a ket needs amplitudes, which the stabilizer tableau does not hold
+backend stabilizer
+qubits q[2]
+H_0
+CNOT_{0->1}
+print fidelity((|00> + |11>)/sqrt(2))

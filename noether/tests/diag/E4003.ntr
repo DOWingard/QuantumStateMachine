@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E4003 6:4
+## N/2 is 5/2 for odd N, not an integer qubit index
+let N = 5
+qubits q[N]
+H_{N/2}

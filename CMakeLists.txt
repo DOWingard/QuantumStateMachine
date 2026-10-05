@@ -123,3 +123,11 @@ option(QPUTER_BUILD_EXAMPLES "Build the example algorithms in examples/" ${PROJE
 if(QPUTER_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
+
+# ------------------------------------------------------------------------------
+# Noether: the quantum scripting language and its `noether` CLI, built on qputer_lib
+# ------------------------------------------------------------------------------
+option(QPUTER_BUILD_NOETHER "Build the Noether language frontend and CLI" ${PROJECT_IS_TOP_LEVEL})
+if(QPUTER_BUILD_NOETHER)
+    add_subdirectory(noether)
+endif()

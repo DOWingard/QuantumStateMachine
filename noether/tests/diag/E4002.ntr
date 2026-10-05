@@ -1,0 +1,6 @@
+noether 0.1
+# expect: E4002 6:4
+## a(3) touching is a call; a constant is not callable (write a (3) or 3a for a product)
+qubits q[1]
+let a = 2
+Rz(a(3))_0
